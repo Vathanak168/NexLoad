@@ -1029,19 +1029,23 @@ def open_folder():
 # AUTO-START TELEGRAM BOT (Works in Python, Gunicorn & Docker)
 # ─────────────────────────────────────────────────────────────────
 def _try_start_bot():
-    token = os.environ.get('TELEGRAM_BOT_TOKEN')
-    if not token and hasattr(config, 'TELEGRAM_BOT_TOKEN'):
-        token = config.TELEGRAM_BOT_TOKEN
+    token = (os.environ.get('TELEGRAM_BOT_TOKEN') or getattr(config, 'TELEGRAM_BOT_TOKEN', '')).strip().strip('"').strip("'")
     if token and token != "123456789:ABCdefGHIjklMNOpqrsTUVwxyz":
-        import threading
-        def _run():
-            try:
-                print("🤖 [Server Boot] Starting Telegram Bot service...")
-                import telegram_bot
-                telegram_bot.run_bot()
-            except Exception as e:
-                print(f"⚠️ [Server Boot] Bot start failed: {e}")
-        threading.Thread(target=_run, daemon=True).start()
+        import subprocess
+        try:
+            bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "telegram_bot.py")
+            print(f"🤖 [Server Boot] Launching standalone Telegram Bot process...")
+            subprocess.Popen([sys.executable, bot_path])
+        except Exception as e:
+            print(f"⚠️ [Server Boot] Subprocess launch failed ({e}), falling back to thread...")
+            import threading
+            def _run():
+                try:
+                    import telegram_bot
+                    telegram_bot.run_bot()
+                except Exception as ex:
+                    print(f"⚠️ [Server Boot] Thread bot failed: {ex}")
+            threading.Thread(target=_run, daemon=True).start()
 
 _try_start_bot()
 

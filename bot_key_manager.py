@@ -31,6 +31,8 @@ def _save_bot_users(data):
     except Exception:
         pass
 
+from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+
 def register_key_handlers(bot):
     """Registers all key management and statistics commands to the bot instance."""
 
@@ -46,12 +48,29 @@ def register_key_handlers(bot):
             "🌐 *Need HD / 4K or Batch Downloads?*\n"
             "Use the NexLoad PC App or Cloud Web Interface."
         )
-        bot.reply_to(message, welcome_text, parse_mode="Markdown")
+        markup = InlineKeyboardMarkup()
+        markup.row(
+            InlineKeyboardButton("🔑 Get Free Key", callback_data="btn_getkey"),
+            InlineKeyboardButton("📋 Check My Key", callback_data="btn_mykey")
+        )
+        markup.row(
+            InlineKeyboardButton("📊 Server Stats", callback_data="btn_stats")
+        )
+        bot.reply_to(message, welcome_text, parse_mode="Markdown", reply_markup=markup)
+
+    @bot.callback_query_handler(func=lambda call: call.data in ['btn_getkey', 'btn_mykey', 'btn_stats'])
+    def on_callback(call):
+        bot.answer_callback_query(call.id)
+        if call.data in ['btn_getkey', 'btn_mykey']:
+            on_getkey(call.message, override_user=call.from_user)
+        elif call.data == 'btn_stats':
+            on_stats(call.message)
 
     @bot.message_handler(commands=['getkey', 'mykey'])
-    def on_getkey(message):
-        user_id = str(message.from_user.id)
-        user_name = message.from_user.first_name or f"TG_{user_id}"
+    def on_getkey(message, override_user=None):
+        target_user = override_user or message.from_user
+        user_id = str(target_user.id)
+        user_name = target_user.first_name or f"TG_{user_id}"
         users = _load_bot_users()
 
         # Check if user already got a key via bot
