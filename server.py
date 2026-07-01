@@ -1046,4 +1046,14 @@ if __name__ == '__main__':
     print(f'  💻  Local URL  → http://localhost:{PORT}')
     print(f'  🌐  Host Binding → {HOST}:{PORT}')
     print('═' * 50 + '\n')
+    if os.getenv('TELEGRAM_BOT_TOKEN'):
+        import threading
+        def _start_bot():
+            try:
+                import telegram_bot
+                telegram_bot.run_bot()
+            except Exception as e:
+                print(f"⚠️ Bot failed to start: {e}")
+        threading.Thread(target=_start_bot, daemon=True).start()
+
     app.run(host=HOST, port=PORT, debug=False, threaded=True)

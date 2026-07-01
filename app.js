@@ -148,7 +148,7 @@ const platformColors = { youtube: '#ff0033', tiktok: '#00f0ea', facebook: '#1877
 // ============================================================
 async function checkServer() {
   try {
-    const res = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(10000) });
     const d = await res.json();
     setServerStatus(d.ok === true);
     if (d.dir) state.downloadDir = d.dir;
@@ -192,12 +192,8 @@ async function submitLicense() {
   btn.textContent = 'Validating...';
   if (errorEl) errorEl.textContent = '';
 
-  // If server not online, check server first
   if (!state.serverOnline) {
-    if (statusEl) statusEl.textContent = '⚠️ Start server.py first, then try again.';
-    btn.disabled = false;
-    btn.textContent = 'Activate & Enter';
-    return;
+    await checkServer();
   }
 
   try {

@@ -250,9 +250,12 @@ def handle_url_download(message):
     threading.Thread(target=download_thread, daemon=True).start()
 
 
-if __name__ == "__main__":
+def run_bot():
     if not BOT_TOKEN or BOT_TOKEN == "123456789:ABCdefGHIjklMNOpqrsTUVwxyz":
         print("Set TELEGRAM_BOT_TOKEN to start polling.")
     else:
         print("🤖 NexLoad Telegram Bot started polling...")
         bot.infinity_polling()
+
+if __name__ == "__main__":
+    run_bot()
