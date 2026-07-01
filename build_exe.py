@@ -67,6 +67,9 @@ def build_exe():
         "--hidden-import=license_manager",
         "--hidden-import=config",
         "--hidden-import=server",
+        "--hidden-import=telegram_bot",
+        "--hidden-import=bot_key_manager",
+        "--hidden-import=bot_downloader",
     ]
 
     cmd = [

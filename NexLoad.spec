@@ -19,7 +19,10 @@ a = Analysis(
         'requests',
         'license_manager',
         'config',
-        'server'
+        'server',
+        'telegram_bot',
+        'bot_key_manager',
+        'bot_downloader'
     ],
     hookspath=[],
     hooksconfig={},
