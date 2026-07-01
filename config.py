@@ -6,6 +6,11 @@ Supports both Local Desktop execution and Cloud Hosting (Render/VPS/Docker).
 """
 
 import os
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 

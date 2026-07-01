@@ -1026,11 +1026,30 @@ def open_folder():
 
 
 # ─────────────────────────────────────────────────────────────────
+# AUTO-START TELEGRAM BOT (Works in Python, Gunicorn & Docker)
+# ─────────────────────────────────────────────────────────────────
+def _try_start_bot():
+    token = os.environ.get('TELEGRAM_BOT_TOKEN')
+    if not token and hasattr(config, 'TELEGRAM_BOT_TOKEN'):
+        token = config.TELEGRAM_BOT_TOKEN
+    if token and token != "123456789:ABCdefGHIjklMNOpqrsTUVwxyz":
+        import threading
+        def _run():
+            try:
+                print("🤖 [Server Boot] Starting Telegram Bot service...")
+                import telegram_bot
+                telegram_bot.run_bot()
+            except Exception as e:
+                print(f"⚠️ [Server Boot] Bot start failed: {e}")
+        threading.Thread(target=_run, daemon=True).start()
+
+_try_start_bot()
+
+# ─────────────────────────────────────────────────────────────────
 # STARTUP
 # ─────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     import socket
-    # Get local IP for display
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
@@ -1046,14 +1065,4 @@ if __name__ == '__main__':
     print(f'  💻  Local URL  → http://localhost:{PORT}')
     print(f'  🌐  Host Binding → {HOST}:{PORT}')
     print('═' * 50 + '\n')
-    if os.getenv('TELEGRAM_BOT_TOKEN'):
-        import threading
-        def _start_bot():
-            try:
-                import telegram_bot
-                telegram_bot.run_bot()
-            except Exception as e:
-                print(f"⚠️ Bot failed to start: {e}")
-        threading.Thread(target=_start_bot, daemon=True).start()
-
     app.run(host=HOST, port=PORT, debug=False, threaded=True)
