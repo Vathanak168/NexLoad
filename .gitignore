@@ -1,0 +1,17 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+
+# PyInstaller
+build/
+dist/
+*.spec.bak
+
+# Local databases & downloads
+bot_temp/
+downloads/
+*.log
+
+# Environment variables
+.env

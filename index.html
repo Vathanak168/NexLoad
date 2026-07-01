@@ -1,0 +1,1352 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Vordex — High Quality Video Downloader</title>
+  <meta name="description"
+    content="Vordex: Professional video downloader. YouTube, TikTok, Facebook, Instagram, Pinterest and more." />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Kantumruy+Pro:wght@300;400;500;600;700&family=Outfit:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+
+<body>
+  <!-- ====== LICENSE LOGIN OVERLAY ====== -->
+  <div id="loginOverlay" class="login-overlay">
+    <div class="aurora-bg" style="position:fixed">
+      <div class="aurora-blob aurora-blob-1"></div>
+      <div class="aurora-blob aurora-blob-2"></div>
+    </div>
+    <div class="login-box">
+      <div class="login-logo">
+        <div class="brand-icon" style="width:52px;height:52px;font-size:1.4rem">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="4 4 12 20 20 4" />
+            <polyline points="12 20 12 12" />
+            <line x1="8" y1="12" x2="16" y2="12" />
+          </svg>
+        </div>
+        <div>
+          <div class="brand-name" style="font-size:1.6rem">Vordex</div>
+          <div style="font-size:0.78rem;opacity:.6;margin-top:-2px">Professional Downloader</div>
+        </div>
+      </div>
+      <h2 class="login-title">Enter License Key</h2>
+      <p class="login-sub">Enter your license key to access Vordex. Don't have one? Contact us to purchase.</p>
+      <div class="login-input-wrap">
+        <input type="text" id="licenseKeyInput" class="login-key-input"
+          placeholder="VORDEX-XXXX-XXX-XXX-XXXX"
+          maxlength="40"
+          oninput="this.value = this.value.toUpperCase()" />
+        <div class="login-error" id="loginError"></div>
+      </div>
+      
+      <div style="margin-bottom: 20px; font-size: 13px; color: #a1a1aa;">
+        Machine Code (HWID): <strong id="hwidDisplay" style="color: #60a5fa; user-select: text;">Loading...</strong>
+      </div>
+      
+      <button class="login-btn" id="loginBtn" onclick="submitLicense()">Activate &amp; Enter</button>
+      <div class="login-footer">
+        <span id="loginStatus"></span>
+      </div>
+    </div>
+  </div>
+
+  <!-- ====== AUTO-DETECT URL BAR (floating) ====== -->
+  <div class="autodetect-bar" id="autoDetectBar" style="display:none">
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+      stroke-linecap="round" stroke-linejoin="round">
+      <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+      <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+    </svg>
+    <input type="text" id="autoDetectInput" class="autodetect-input"
+      placeholder="Paste any URL here — auto-detects platform..."
+      oninput="autoDetectPlatform(this.value)" />
+    <button class="autodetect-go" id="autoDetectGo" onclick="goAutoDetect()">Go ➜</button>
+  </div>
+
+  <!-- ====== QUEUE PANEL ====== -->
+  <div class="queue-panel" id="queuePanel">
+    <div class="queue-panel-header">
+      <span>⚡ Download Queue</span>
+      <div style="display:flex;gap:8px;align-items:center">
+        <span class="queue-badge" id="queueBadge">0</span>
+        <button class="queue-close-btn" onclick="toggleQueuePanel()">✕</button>
+      </div>
+    </div>
+    <div class="queue-list" id="queueList">
+      <div class="queue-empty">No active downloads</div>
+    </div>
+  </div>
+
+  <!-- Aurora Background -->
+  <div class="aurora-bg">
+    <div class="aurora-blob aurora-blob-1"></div>
+    <div class="aurora-blob aurora-blob-2"></div>
+    <div class="aurora-blob aurora-blob-3"></div>
+    <div class="aurora-blob aurora-blob-4"></div>
+  </div>
+
+  <!-- Top Navbar -->
+  <nav class="navbar" id="navbar">
+    <div class="nav-brand">
+      <div class="brand-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="4 4 12 20 20 4" />
+          <polyline points="12 20 12 12" />
+          <line x1="8" y1="12" x2="16" y2="12" />
+        </svg>
+      </div>
+      <span class="brand-name">Vordex</span>
+      <span class="brand-badge">v2.0</span>
+    </div>
+
+    <div class="nav-tabs" id="navTabs">
+      <button class="nav-tab active" data-page="home" id="tab-home">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="m3 9 9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z" />
+          <polyline points="9 22 9 12 15 12 15 22" />
+        </svg>
+        Home
+      </button>
+      <button class="nav-tab" data-page="youtube" id="tab-youtube">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path
+            d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z" />
+          <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" />
+        </svg>
+        YouTube
+      </button>
+      <button class="nav-tab" data-page="tiktok" id="tab-tiktok">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+        </svg>
+        TikTok
+      </button>
+      <button class="nav-tab" data-page="facebook" id="tab-facebook">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+        </svg>
+        Facebook
+      </button>
+      <button class="nav-tab" data-page="instagram" id="tab-instagram">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+          <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+          <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+        </svg>
+        Instagram
+      </button>
+      <button class="nav-tab" data-page="pinterest" id="tab-pinterest">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <path
+            d="M12 2C6.477 2 2 6.477 2 12c0 4.236 2.636 7.855 6.356 9.312-.088-.791-.167-2.005.035-2.868.181-.78 1.172-4.97 1.172-4.97s-.299-.598-.299-1.482c0-1.388.806-2.428 1.808-2.428.852 0 1.265.64 1.265 1.408 0 .858-.546 2.14-.828 3.33-.236.995.499 1.806 1.476 1.806 1.772 0 3.137-1.868 3.137-4.565 0-2.387-1.715-4.057-4.163-4.057-2.838 0-4.501 2.128-4.501 4.33 0 .857.33 1.776.742 2.279a.3.3 0 0 1 .069.285c-.076.314-.244.995-.277 1.134-.044.183-.145.222-.334.134-1.249-.581-2.03-2.407-2.03-3.874 0-3.154 2.292-6.052 6.608-6.052 3.469 0 6.165 2.473 6.165 5.776 0 3.447-2.173 6.22-5.19 6.22-1.013 0-1.967-.527-2.292-1.148l-.623 2.378c-.226.869-.835 1.958-1.244 2.621.937.29 1.931.446 2.962.446C17.523 22 22 17.523 22 12S17.523 2 12 2z" />
+        </svg>
+        Pinterest
+      </button>
+      <button class="nav-tab" data-page="pexels" id="tab-pexels">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="10" />
+          <path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20" />
+          <path d="M2 12h20" />
+        </svg>
+        Pexels
+      </button>
+      <button class="nav-tab" data-page="stats" id="tab-stats">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="18" y1="20" x2="18" y2="10"/>
+          <line x1="12" y1="20" x2="12" y2="4"/>
+          <line x1="6" y1="20" x2="6" y2="14"/>
+          <line x1="2" y1="20" x2="22" y2="20"/>
+        </svg>
+        Stats
+      </button>
+      <button class="nav-tab" data-page="settings" id="tab-settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3" />
+          <path
+            d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z" />
+        </svg>
+        Settings
+      </button>
+      <button class="nav-tab" onclick="window.open('http://127.0.0.1:5050', '_blank')" title="Open Admin Panel">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2" />
+          <path d="M7 11V7a5 5 0 0 1 10 0v4" />
+        </svg>
+        Admin Panel
+      </button>
+    </div>
+
+
+    <div class="nav-right">
+      <button class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="Toggle theme">
+        <span id="themeIcon">☀️</span>
+      </button>
+      <span class="server-badge server-offline" id="serverBadge">⚠️ Server Offline</span>
+      <div class="history-btn" id="historyBtn" title="Download History">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 .49-4.95" />
+        </svg>
+        <span class="history-count" id="historyCount">0</span>
+      </div>
+      <div class="queue-btn" id="queueToggleBtn" onclick="toggleQueuePanel()" title="Download Queue">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+          stroke-linecap="round" stroke-linejoin="round">
+          <line x1="8" y1="6" x2="21" y2="6"/>
+          <line x1="8" y1="12" x2="21" y2="12"/>
+          <line x1="8" y1="18" x2="21" y2="18"/>
+          <line x1="3" y1="6" x2="3.01" y2="6"/>
+          <line x1="3" y1="12" x2="3.01" y2="12"/>
+          <line x1="3" y1="18" x2="3.01" y2="18"/>
+        </svg>
+        <span class="queue-count" id="navQueueBadge">0</span>
+      </div>
+    </div>
+  </nav>
+
+  <!-- Main Content -->
+  <main class="main-content">
+
+    <!-- =================== HOME PAGE =================== -->
+    <section class="page active" id="page-home">
+      <div class="page-header">
+        <div class="page-title-group">
+          <h1 class="hero-title">
+            Download Anything,<br />
+            <span class="gradient-text">Anywhere.</span>
+          </h1>
+          <p class="hero-subtitle">Ultra HD quality, lightning fast. Choose your platform and paste the link.</p>
+        </div>
+        <div class="hero-badge-row">
+          <span class="hero-badge">⚡ Up to 8K UHD</span>
+          <span class="hero-badge">🎵 Audio Extract</span>
+          <span class="hero-badge">🚀 Fast Download</span>
+          <span class="hero-badge">🔒 No Watermark</span>
+        </div>
+      </div>
+
+      <div class="platform-grid" id="platformGrid">
+        <div class="platform-card" data-target="youtube">
+          <div class="platform-card-glow yt-glow"></div>
+          <div class="platform-card-icon yt-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z" />
+              <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>YouTube</h3>
+            <p>4K UHD · 1080p · MP3</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="platform-card" data-target="tiktok">
+          <div class="platform-card-glow tt-glow"></div>
+          <div class="platform-card-icon tt-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>TikTok</h3>
+            <p>No Watermark · Audio</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="platform-card" data-target="facebook">
+          <div class="platform-card-glow fb-glow"></div>
+          <div class="platform-card-icon fb-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>Facebook</h3>
+            <p>HD · SD · Reels</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="platform-card" data-target="instagram">
+          <div class="platform-card-glow ig-glow"></div>
+          <div class="platform-card-icon ig-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>Instagram</h3>
+            <p>Reels · Stories · Posts</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="platform-card" data-target="pinterest">
+          <div class="platform-card-glow pi-glow"></div>
+          <div class="platform-card-icon pi-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="M12 2C6.477 2 2 6.477 2 12c0 4.236 2.636 7.855 6.356 9.312-.088-.791-.167-2.005.035-2.868.181-.78 1.172-4.97 1.172-4.97s-.299-.598-.299-1.482c0-1.388.806-2.428 1.808-2.428.852 0 1.265.64 1.265 1.408 0 .858-.546 2.14-.828 3.33-.236.995.499 1.806 1.476 1.806 1.772 0 3.137-1.868 3.137-4.565 0-2.387-1.715-4.057-4.163-4.057-2.838 0-4.501 2.128-4.501 4.33 0 .857.33 1.776.742 2.279a.3.3 0 0 1 .069.285c-.076.314-.244.995-.277 1.134-.044.183-.145.222-.334.134-1.249-.581-2.03-2.407-2.03-3.874 0-3.154 2.292-6.052 6.608-6.052 3.469 0 6.165 2.473 6.165 5.776 0 3.447-2.173 6.22-5.19 6.22-1.013 0-1.967-.527-2.292-1.148l-.623 2.378c-.226.869-.835 1.958-1.244 2.621.937.29 1.931.446 2.962.446C17.523 22 22 17.523 22 12S17.523 2 12 2z" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>Pinterest</h3>
+            <p>Images · Videos · Boards</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+
+        <div class="platform-card" data-target="pexels">
+          <div class="platform-card-glow px-glow" style="background: radial-gradient(circle at center, rgba(5,160,129,0.3) 0%, transparent 70%);"></div>
+          <div class="platform-card-icon px-icon" style="background:rgba(5, 160, 129, 0.1); border-color:#05a081; color:#05a081;">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><circle cx="12" cy="12" r="4"></circle></svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>Pexels</h3>
+            <p>100% Original Photos</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="5" y1="12" x2="19" y2="12" /><polyline points="12 5 19 12 12 19" /></svg>
+          </div>
+        </div>
+
+        <div class="platform-card card-twitter" data-target="universal">
+          <div class="platform-card-glow tw-glow"></div>
+          <div class="platform-card-icon tw-icon">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M4 4l16 16M4 20L20 4" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>Twitter / X</h3>
+            <p>Videos · GIFs</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+
+        <!-- Universal / Any Website -->
+        <div class="platform-card" data-target="universal" style="border-color:rgba(168,85,247,0.25)">
+          <div class="platform-card-glow"
+            style="background:radial-gradient(circle,rgba(168,85,247,0.18) 0%,transparent 70%)"></div>
+          <div class="platform-card-icon" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3)">
+            <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="1.8"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+          </div>
+          <div class="platform-card-info">
+            <h3>Universal 🌐</h3>
+            <p>Any Site · 1000+ Platforms</p>
+          </div>
+          <div class="platform-card-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="5" y1="12" x2="19" y2="12" />
+              <polyline points="12 5 19 12 12 19" />
+            </svg>
+          </div>
+        </div>
+      </div>
+
+      <!-- Recent Downloads -->
+      <div class="recent-section">
+        <div class="section-header">
+          <h2 class="section-title">Recent Downloads</h2>
+          <button class="clear-btn" id="clearHistoryBtn">Clear All</button>
+        </div>
+        <div class="recent-list" id="recentList">
+          <div class="empty-state" id="emptyHistory">
+            <div class="empty-icon">
+              <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+                <polyline points="14 2 14 8 20 8" />
+                <line x1="16" y1="13" x2="8" y2="13" />
+                <line x1="16" y1="17" x2="8" y2="17" />
+                <polyline points="10 9 9 9 8 9" />
+              </svg>
+            </div>
+            <p>No downloads yet. Start by choosing a platform above.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== YOUTUBE PAGE =================== -->
+    <section class="page" id="page-youtube">
+      <div class="downloader-page">
+        <div class="page-platform-header yt-header">
+          <div class="platform-header-icon yt-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58A2.78 2.78 0 0 0 3.41 19.6C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.95A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z" />
+              <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">YouTube Downloader</h2>
+            <p class="platform-page-sub">Download videos up to 8K UHD or extract audio</p>
+          </div>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Video URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="yt-url" placeholder="https://www.youtube.com/watch?v=..." />
+              <button class="paste-btn" onclick="pasteUrl('yt-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="yt-analyze-btn" onclick="analyzeUrl('youtube')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+
+          <p class="input-hint">💡 Quality options appear after Analyze</p>
+        </div>
+
+        <div class="result-area" id="yt-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="yt-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('yt')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple YouTube Videos
+          </button>
+          <div class="batch-expand" id="yt-batch-expand" style="display:none">
+            <div class="batch-url-list" id="yt-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://www.youtube.com/watch?v=..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('yt','https://www.youtube.com/watch?v=...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#9888;&#65039; Only YouTube URLs accepted here</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('yt')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('yt')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (YouTube)
+              </button>
+            </div>
+            <div class="batch-queue" id="yt-batch-queue"></div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- =================== TIKTOK PAGE =================== -->
+    <section class="page" id="page-tiktok">
+      <div class="downloader-page">
+        <div class="page-platform-header tt-header">
+          <div class="platform-header-icon tt-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M9 12a4 4 0 1 0 4 4V4a5 5 0 0 0 5 5" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">TikTok Downloader</h2>
+            <p class="platform-page-sub">Download without watermark or extract audio</p>
+          </div>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Video URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="tt-url" placeholder="https://www.tiktok.com/@user/video/..." />
+              <button class="paste-btn" onclick="pasteUrl('tt-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="tt-analyze-btn" onclick="analyzeUrl('tiktok')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+
+          <p class="input-hint">💡 Quality options appear after Analyze</p>
+        </div>
+
+        <div class="result-area" id="tt-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="tt-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('tt')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple TikTok Videos
+          </button>
+          <div class="batch-expand" id="tt-batch-expand" style="display:none">
+            <div class="batch-url-list" id="tt-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://www.tiktok.com/@user/video/..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('tt','https://www.tiktok.com/@user/video/...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#9888;&#65039; Only TikTok URLs accepted here</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('tt')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('tt')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (TikTok)
+              </button>
+            </div>
+            <div class="batch-queue" id="tt-batch-queue"></div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- =================== FACEBOOK PAGE =================== -->
+    <section class="page" id="page-facebook">
+      <div class="downloader-page">
+        <div class="page-platform-header fb-header">
+          <div class="platform-header-icon fb-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M18 2h-3a5 5 0 0 0-5 5v3H7v4h3v8h4v-8h3l1-4h-4V7a1 1 0 0 1 1-1h3z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">Facebook Downloader</h2>
+            <p class="platform-page-sub">Download videos and reels in HD quality</p>
+          </div>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Video URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="fb-url" placeholder="https://www.facebook.com/watch?v=..." />
+              <button class="paste-btn" onclick="pasteUrl('fb-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="fb-analyze-btn" onclick="analyzeUrl('facebook')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+
+          <p class="input-hint">💡 Quality options appear after Analyze</p>
+        </div>
+
+        <div class="result-area" id="fb-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="fb-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('fb')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple Facebook Videos
+          </button>
+          <div class="batch-expand" id="fb-batch-expand" style="display:none">
+            <div class="batch-url-list" id="fb-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://www.facebook.com/watch/?v=..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('fb','https://www.facebook.com/watch/?v=...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#9888;&#65039; Only Facebook URLs accepted here</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('fb')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('fb')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (Facebook)
+              </button>
+            </div>
+            <div class="batch-queue" id="fb-batch-queue"></div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- =================== INSTAGRAM PAGE =================== -->
+    <section class="page" id="page-instagram">
+      <div class="downloader-page">
+        <div class="page-platform-header ig-header">
+          <div class="platform-header-icon ig-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <rect x="2" y="2" width="20" height="20" rx="5" ry="5" />
+              <path d="M16 11.37A4 4 0 1 1 12.63 8 4 4 0 0 1 16 11.37z" />
+              <line x1="17.5" y1="6.5" x2="17.51" y2="6.5" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">Instagram Downloader</h2>
+            <p class="platform-page-sub">Download Reels, Stories, Posts & Carousels</p>
+          </div>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Post / Reel URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="ig-url" placeholder="https://www.instagram.com/p/..." />
+              <button class="paste-btn" onclick="pasteUrl('ig-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="ig-analyze-btn" onclick="analyzeUrl('instagram')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+
+          <p class="input-hint">� Quality options appear after Analyze</p>
+        </div>
+
+        <div class="result-area" id="ig-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="ig-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('ig')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple Instagram Videos
+          </button>
+          <div class="batch-expand" id="ig-batch-expand" style="display:none">
+            <div class="batch-url-list" id="ig-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://www.instagram.com/p/..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('ig','https://www.instagram.com/p/...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#9888;&#65039; Only Instagram URLs accepted here</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('ig')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('ig')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (Instagram)
+              </button>
+            </div>
+            <div class="batch-queue" id="ig-batch-queue"></div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- =================== PINTEREST PAGE =================== -->
+    <section class="page" id="page-pinterest">
+      <div class="downloader-page">
+        <div class="page-platform-header pi-header">
+          <div class="platform-header-icon pi-icon">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path
+                d="M12 2C6.477 2 2 6.477 2 12c0 4.236 2.636 7.855 6.356 9.312-.088-.791-.167-2.005.035-2.868.181-.78 1.172-4.97 1.172-4.97s-.299-.598-.299-1.482c0-1.388.806-2.428 1.808-2.428.852 0 1.265.64 1.265 1.408 0 .858-.546 2.14-.828 3.33-.236.995.499 1.806 1.476 1.806 1.772 0 3.137-1.868 3.137-4.565 0-2.387-1.715-4.057-4.163-4.057-2.838 0-4.501 2.128-4.501 4.33 0 .857.33 1.776.742 2.279a.3.3 0 0 1 .069.285c-.076.314-.244.995-.277 1.134-.044.183-.145.222-.334.134-1.249-.581-2.03-2.407-2.03-3.874 0-3.154 2.292-6.052 6.608-6.052 3.469 0 6.165 2.473 6.165 5.776 0 3.447-2.173 6.22-5.19 6.22-1.013 0-1.967-.527-2.292-1.148l-.623 2.378c-.226.869-.835 1.958-1.244 2.621.937.29 1.931.446 2.962.446C17.523 22 22 17.523 22 12S17.523 2 12 2z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">Pinterest Downloader</h2>
+            <p class="platform-page-sub">Download high-resolution images and videos</p>
+          </div>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Pin URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="pi-url" placeholder="https://www.pinterest.com/pin/..." />
+              <button class="paste-btn" onclick="pasteUrl('pi-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="pi-analyze-btn" onclick="analyzeUrl('pinterest')">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+
+          <p class="input-hint">💡 Quality options appear after Analyze</p>
+        </div>
+
+        <div class="result-area" id="pi-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="pi-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('pi')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple Pinterest Videos
+          </button>
+          <div class="batch-expand" id="pi-batch-expand" style="display:none">
+            <div class="batch-url-list" id="pi-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://www.pinterest.com/pin/..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('pi','https://www.pinterest.com/pin/...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#9888;&#65039; Only Pinterest URLs accepted here</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('pi')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('pi')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (Pinterest)
+              </button>
+            </div>
+            <div class="batch-queue" id="pi-batch-queue"></div>
+          </div>
+        </div>
+
+
+      </div>
+    </section>
+
+    <!-- =================== PEXELS PAGE =================== -->
+    <section class="page" id="page-pexels">
+      <div class="downloader-page">
+        <div class="page-platform-header px-header" style="background:linear-gradient(135deg,rgba(5,160,129,0.15),transparent);border-color:rgba(5,160,129,0.2)">
+          <div class="platform-header-icon px-icon" style="background:rgba(5,160,129,0.15);border-color:rgba(5,160,129,0.3);color:#05a081">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"></path><circle cx="12" cy="12" r="4"></circle>
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">Pexels Downloader</h2>
+            <p class="platform-page-sub">Download high-resolution Original photos & videos</p>
+          </div>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Pexels URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="px-url" placeholder="https://www.pexels.com/photo/..." />
+              <button class="paste-btn" onclick="pasteUrl('px-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="px-analyze-btn" onclick="analyzeUrl('pexels')" style="background:#05a081;box-shadow:0 0 20px rgba(5,160,129,0.3)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+
+          <p class="input-hint">💡 Direct original quality download supported</p>
+        </div>
+
+        <div class="result-area" id="px-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="px-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('px')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple Pexels Media
+          </button>
+          <div class="batch-expand" id="px-batch-expand" style="display:none">
+            <div class="batch-url-list" id="px-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://www.pexels.com/photo/..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('px','https://www.pexels.com/photo/...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#9888;&#65039; Only Pexels URLs accepted here</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('px')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('px')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (Pexels)
+              </button>
+            </div>
+            <div class="batch-queue" id="px-batch-queue"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =================== UNIVERSAL PAGE =================== -->
+    <section class="page" id="page-universal">
+      <div class="downloader-page">
+        <div class="page-platform-header"
+          style="background:linear-gradient(135deg,rgba(168,85,247,0.15),rgba(99,102,241,0.1));border-color:rgba(168,85,247,0.2)">
+          <div class="platform-header-icon" style="background:rgba(168,85,247,0.15);border-color:rgba(168,85,247,0.3)">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#a855f7" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <circle cx="12" cy="12" r="10" />
+              <line x1="2" y1="12" x2="22" y2="12" />
+              <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+            </svg>
+          </div>
+          <div>
+            <h2 class="platform-page-title">Universal Downloader 🌐</h2>
+            <p class="platform-page-sub">Any website — YouTube, TikTok, Bilibili, iQiyi, Douyin, Weibo, 1000+ sites</p>
+          </div>
+        </div>
+
+        <!-- Supported Chinese Platforms -->
+        <div class="platform-tags-row">
+          <span class="ptag">📺 Bilibili</span>
+          <span class="ptag">🎬 iQiyi 爱奇艺</span>
+          <span class="ptag">🎥 Youku 优酷</span>
+          <span class="ptag">🎵 Douyin 抖音</span>
+          <span class="ptag">📡 Weibo 微博</span>
+          <span class="ptag">🥭 MangoTV 芒果TV</span>
+          <span class="ptag">🎮 Kuaishou 快手</span>
+          <span class="ptag">🐦 Twitter/X</span>
+          <span class="ptag">▶️ YouTube</span>
+          <span class="ptag">🎵 TikTok</span>
+          <span class="ptag">+ 990 more</span>
+        </div>
+
+        <div class="url-input-card">
+          <label class="input-label">Paste Any Video URL</label>
+          <div class="url-input-row">
+            <div class="url-input-wrap">
+              <span class="url-prefix-icon">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                  <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+                </svg>
+              </span>
+              <input type="text" class="url-input" id="uni-url"
+                placeholder="https://www.bilibili.com/video/... or any video URL" />
+              <button class="paste-btn" onclick="pasteUrl('uni-url')" title="Paste from clipboard">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2" />
+                  <rect x="8" y="2" width="8" height="4" rx="1" ry="1" />
+                </svg>
+                Paste
+              </button>
+            </div>
+            <button class="analyze-btn" id="uni-analyze-btn" onclick="analyzeUrl('universal')"
+              style="background:linear-gradient(135deg,#a855f7,#6366f1)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+              Analyze
+            </button>
+          </div>
+          <p class="input-hint">💡 Quality options appear after Analyze</p>
+        </div>
+
+        <div class="result-area" id="uni-result"></div>
+
+        <!-- Batch Mode -->
+        <div class="batch-mode-section" id="uni-batch-section">
+          <button class="batch-toggle-btn" onclick="toggleBatch('uni')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              stroke-linecap="round" stroke-linejoin="round">
+              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+            </svg>
+            Batch Mode — Download Multiple Universal Videos
+          </button>
+          <div class="batch-expand" id="uni-batch-expand" style="display:none">
+            <div class="batch-url-list" id="uni-batch-list">
+              <div class="batch-url-item">
+                <span class="batch-url-num">#1</span>
+                <input type="text" class="url-input batch-url-input" placeholder="https://any-website.com/video/..." />
+                <button class="batch-remove-btn" onclick="removeBatchUrl(this)" title="Remove">&times;</button>
+              </div>
+            </div>
+            <button class="batch-add-btn" onclick="addBatchUrl('uni','https://any-website.com/video/...')">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"
+                stroke-linecap="round" stroke-linejoin="round">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+              Add Another URL
+            </button>
+            <p class="input-hint">&#127760; Any URL accepted — supports 1000+ sites</p>
+            <div class="batch-action-row">
+              <button class="batch-clear-btn" onclick="clearPlatformBatch('uni')">Clear All</button>
+              <button class="batch-dl-btn" onclick="startPlatformBatch('uni')">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/>
+                  <line x1="12" y1="21" x2="12" y2="9"/>
+                  <path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>
+                Download All (Universal)
+              </button>
+            </div>
+            <div class="batch-queue" id="uni-batch-queue"></div>
+          </div>
+        </div>
+
+      </div>
+    </section>
+
+    </section>
+
+    <!-- =================== STATS PAGE =================== -->
+    <section class="page" id="page-stats">
+      <div class="settings-page">
+        <div class="settings-header">
+          <h2 class="platform-page-title">📊 Statistics Dashboard</h2>
+          <p class="platform-page-sub">Your download activity overview</p>
+        </div>
+        <div class="stats-grid" id="statsGrid">
+          <div class="stat-card">
+            <div class="stat-icon">⬇️</div>
+            <div class="stat-value" id="stat-total">0</div>
+            <div class="stat-label">Total Downloads</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">💾</div>
+            <div class="stat-value" id="stat-bytes">0 MB</div>
+            <div class="stat-label">Data Downloaded</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">📅</div>
+            <div class="stat-value" id="stat-today">0</div>
+            <div class="stat-label">Today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-icon">🏆</div>
+            <div class="stat-value" id="stat-top-platform">—</div>
+            <div class="stat-label">Top Platform</div>
+          </div>
+        </div>
+        <div class="settings-card" style="margin-top:24px">
+          <h3 class="settings-card-title">Downloads by Platform</h3>
+          <div id="platformStatsBar"></div>
+        </div>
+        <div class="settings-card" style="margin-top:16px">
+          <h3 class="settings-card-title">Weekly Activity (Last 7 days)</h3>
+          <canvas id="weekChart" height="120" style="width:100%;margin-top:12px"></canvas>
+        </div>
+        <div class="settings-card" style="margin-top:16px">
+          <h3 class="settings-card-title">License Info</h3>
+          <div id="licenseInfoBox" style="margin-top:8px">
+            <div style="opacity:.6">Loading...</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- =================== SETTINGS (ENHANCED) =================== -->
+    <section class="page" id="page-settings">
+      <div class="settings-page">
+        <div class="settings-header">
+          <h2 class="platform-page-title">⚙️ Settings</h2>
+          <p class="platform-page-sub">Configure your download preferences</p>
+        </div>
+
+        <div class="settings-grid">
+
+          <!-- Download Folder -->
+          <div class="settings-card settings-card-full">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+              </svg>
+              Download Folder
+            </h3>
+            <div class="folder-row">
+              <input type="text" class="folder-input" id="folderInput" placeholder="e.g. D:\Downloads\Vordex" />
+              <button class="btn-secondary" onclick="setCustomFolder()">Set Folder</button>
+              <button class="open-folder-btn" onclick="openFolder()">📂 Open</button>
+            </div>
+            <p class="settings-value" id="download-dir-display">~/Downloads/Vordex</p>
+          </div>
+
+          <!-- Speed Limiter -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10"/>
+                <polyline points="12 6 12 12 16 14"/>
+              </svg>
+              Download Speed
+            </h3>
+            <div class="speed-options" id="speedOptions">
+              <button class="speed-btn active" data-speed="" onclick="setSpeed(this)">Unlimited</button>
+              <button class="speed-btn" data-speed="5M" onclick="setSpeed(this)">5 MB/s</button>
+              <button class="speed-btn" data-speed="2M" onclick="setSpeed(this)">2 MB/s</button>
+              <button class="speed-btn" data-speed="1M" onclick="setSpeed(this)">1 MB/s</button>
+              <button class="speed-btn" data-speed="500K" onclick="setSpeed(this)">500 KB/s</button>
+              <button class="speed-btn" data-speed="200K" onclick="setSpeed(this)">200 KB/s</button>
+            </div>
+          </div>
+
+          <!-- Subtitles -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <rect x="2" y="4" width="20" height="16" rx="2"/>
+                <line x1="7" y1="14" x2="17" y2="14"/>
+                <line x1="7" y1="10" x2="11" y2="10"/>
+              </svg>
+              Subtitles
+            </h3>
+            <label class="toggle-row">
+              <span>Download subtitles</span>
+              <input type="checkbox" id="subtitleToggle" class="toggle-input" onchange="saveSettings()" />
+              <span class="toggle-thumb"></span>
+            </label>
+            <div class="sub-lang-row" id="subLangRow">
+              <label style="font-size:0.85rem;opacity:.7">Language:</label>
+              <select id="subLangSelect" class="sub-lang-select" onchange="saveSettings()">
+                <option value="en">English (អង់គ្លេស)</option>
+                <option value="kh">Khmer (ខ្មែរ)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Auto-paste URL bar -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
+                <path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" />
+              </svg>
+              Auto-Detect URL Bar
+            </h3>
+            <label class="toggle-row">
+              <span>Show floating URL bar</span>
+              <input type="checkbox" id="autoDetectToggle" class="toggle-input"
+                onchange="toggleAutoDetectBar(this.checked)" />
+              <span class="toggle-thumb"></span>
+            </label>
+          </div>
+
+          <!-- Concurrent Downloads -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <polyline points="23 4 23 10 17 10" />
+                <polyline points="1 20 1 14 7 14" />
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+              </svg>
+              Concurrent Downloads
+            </h3>
+            <div class="slider-group">
+              <input type="range" min="1" max="5" value="3" class="settings-slider" id="concurrentSlider"
+                oninput="updateSliderVal(this)">
+              <span class="slider-value" id="sliderVal">3</span>
+            </div>
+          </div>
+
+          <!-- Theme -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">🎨 Theme</h3>
+            <div class="lang-toggle">
+              <button class="lang-btn active" id="theme-dark" onclick="applyTheme('dark')">🌙 Dark</button>
+              <button class="lang-btn" id="theme-light" onclick="applyTheme('light')">☀️ Light</button>
+            </div>
+          </div>
+
+          <!-- Language -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="12" cy="12" r="10" />
+                <line x1="2" y1="12" x2="22" y2="12" />
+                <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+              </svg>
+              Language
+            </h3>
+            <div class="lang-toggle">
+              <button class="lang-btn active" id="lang-en" onclick="setLanguage('en')">🇬🇧 English</button>
+              <button class="lang-btn" id="lang-kh" onclick="setLanguage('kh')">🇰🇭 ខ្មែរ</button>
+            </div>
+          </div>
+
+          <!-- Server Status -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+              </svg>
+              Server Status
+            </h3>
+            <div id="settings-server-status" class="server-badge server-offline">Checking...</div>
+            <div style="margin-top:8px;font-size:0.8rem;opacity:.6" id="settings-version"></div>
+          </div>
+
+          <!-- Notifications -->
+          <div class="settings-card">
+            <h3 class="settings-card-title">🔔 Notifications</h3>
+            <label class="toggle-row">
+              <span>Auto-paste on focus</span>
+              <input type="checkbox" id="autoPasteToggle" class="toggle-input" onchange="saveSettings()" />
+              <span class="toggle-thumb"></span>
+            </label>
+            <label class="toggle-row" style="margin-top:10px">
+              <span>Show toast notifications</span>
+              <input type="checkbox" id="notifToggle" class="toggle-input" checked onchange="saveSettings()" />
+              <span class="toggle-thumb"></span>
+            </label>
+          </div>
+
+        </div>
+      </div>
+    </section>
+
+    </div> <!-- /main-content -->
+
+    <!-- Toast Container -->
+    <div class="toast-container" id="toastContainer"></div>
+  </div> <!-- /app-container -->
+
+  <script src="app.js"></script>
+</body>
+</html>

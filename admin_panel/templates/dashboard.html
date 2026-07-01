@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Dashboard - NexLoad Admin</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --success: #10b981;
+            --danger: #ef4444;
+            --bg-color: #0f172a;
+            --surface: #1e293b;
+            --border: rgba(255, 255, 255, 0.1);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+        }
+        body {
+            margin: 0;
+            padding: 0;
+            font-family: 'Inter', sans-serif;
+            background-color: var(--bg-color);
+            color: var(--text-main);
+            background-image: radial-gradient(circle at top right, rgba(99, 102, 241, 0.1), transparent 50%),
+                              radial-gradient(circle at bottom left, rgba(16, 185, 129, 0.05), transparent 50%);
+            min-height: 100vh;
+        }
+        .navbar {
+            background: rgba(30, 41, 59, 0.8);
+            backdrop-filter: blur(12px);
+            border-bottom: 1px solid var(--border);
+            padding: 16px 40px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: sticky;
+            top: 0;
+            z-index: 10;
+        }
+        .brand {
+            font-size: 20px;
+            font-weight: 700;
+            background: linear-gradient(135deg, #818cf8, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .logout-btn {
+            background: rgba(239, 68, 68, 0.1);
+            color: var(--danger);
+            border: 1px solid rgba(239, 68, 68, 0.2);
+            padding: 8px 16px;
+            border-radius: 8px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s;
+        }
+        .logout-btn:hover {
+            background: var(--danger);
+            color: white;
+        }
+        .container {
+            max-width: 1200px;
+            margin: 40px auto;
+            padding: 0 20px;
+            display: grid;
+            grid-template-columns: 350px 1fr;
+            gap: 30px;
+        }
+        .card {
+            background: rgba(30, 41, 59, 0.5);
+            backdrop-filter: blur(16px);
+            border: 1px solid var(--border);
+            border-radius: 16px;
+            padding: 24px;
+            box-shadow: 0 10px 30px -10px rgba(0,0,0,0.3);
+        }
+        .card-title {
+            margin: 0 0 20px 0;
+            font-size: 18px;
+            font-weight: 600;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .input-group {
+            margin-bottom: 16px;
+        }
+        .input-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 13px;
+            color: var(--text-muted);
+        }
+        .input-group input, .input-group select {
+            width: 100%;
+            padding: 10px 14px;
+            background: rgba(15, 23, 42, 0.6);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            color: var(--text-main);
+            font-size: 14px;
+            outline: none;
+            box-sizing: border-box;
+        }
+        .input-group input:focus, .input-group select:focus {
+            border-color: var(--primary);
+        }
+        .btn-primary {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 12px;
+            width: 100%;
+            border-radius: 8px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: 0.2s;
+        }
+        .btn-primary:hover { background: var(--primary-hover); }
+        
+        /* Table Styles */
+        .table-responsive {
+            overflow-x: auto;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 14px;
+        }
+        th, td {
+            padding: 14px 16px;
+            text-align: left;
+            border-bottom: 1px solid var(--border);
+        }
+        th {
+            color: var(--text-muted);
+            font-weight: 500;
+            background: rgba(15, 23, 42, 0.4);
+        }
+        tbody tr:hover {
+            background: rgba(255, 255, 255, 0.02);
+        }
+        .badge {
+            padding: 4px 10px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-active { background: rgba(16, 185, 129, 0.1); color: var(--success); border: 1px solid rgba(16,185,129,0.2) }
+        .badge-revoked { background: rgba(239, 68, 68, 0.1); color: var(--danger); border: 1px solid rgba(239,68,68,0.2) }
+        .badge-tier { background: rgba(99, 102, 241, 0.1); color: #818cf8; border: 1px solid rgba(99,102,241,0.2)}
+        
+        .action-btn {
+            background: transparent;
+            border: 1px solid var(--danger);
+            color: var(--danger);
+            padding: 6px 12px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 12px;
+            transition: 0.2s;
+        }
+        .action-btn:hover {
+            background: var(--danger);
+            color: white;
+        }
+        .copy-btn {
+            background: transparent;
+            border: 1px solid #4b5563;
+            color: #9ca3af;
+            padding: 4px 8px;
+            margin-left: 8px;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .copy-btn:hover { background: #374151; color: white; }
+        
+        .modal {
+            display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.6); backdrop-filter: blur(4px); z-index: 100;
+            align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: var(--surface); border: 1px solid var(--border);
+            padding: 30px; border-radius: 16px; width: 400px; text-align: center;
+        }
+        .modal-key {
+            background: rgba(0,0,0,0.3); padding: 15px; border-radius: 8px;
+            word-break: break-all; font-family: monospace; font-size: 16px; margin: 20px 0;
+            color: #818cf8; border: 1px dashed var(--border);
+        }
+        .close-modal {
+            background: #374151; color: white; border: none; padding: 10px 20px;
+            border-radius: 8px; cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+
+    <nav class="navbar">
+        <div class="brand">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
+            NexLoad Admin
+        </div>
+        <a href="/logout" class="logout-btn">Logout</a>
+    </nav>
+
+    <div class="container">
+        <!-- Generate Key Section -->
+        <div class="card" style="height: fit-content;">
+            <h2 class="card-title">✨ Generate New Key</h2>
+            <form id="genForm">
+                <div class="input-group">
+                    <label>Customer Name</label>
+                    <input type="text" id="custName" required placeholder="e.g. John Doe">
+                </div>
+                <div class="input-group">
+                    <label>Machine Code (HWID)</label>
+                    <input type="text" id="custHwid" required placeholder="e.g. PC-1A2B3C4D5E">
+                </div>
+                <div class="input-group">
+                    <label>License Tier</label>
+                    <select id="tierSelect">
+                        {% for t_id, t_info in tiers.items() %}
+                        <option value="{{ t_id }}">{{ t_info.label }} ({{ t_info.days }} days)</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="btn-primary" id="genBtn">Generate Key</button>
+            </form>
+        </div>
+
+        <!-- License List Section -->
+        <div class="card">
+            <h2 class="card-title">🔑 Manage Licenses</h2>
+            <div class="table-responsive">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>User</th>
+                            <th>HWID</th>
+                            <th>License Key</th>
+                            <th>Tier</th>
+                            <th>Expires</th>
+                            <th>Status</th>
+                            <th>Action</th>
+                        </tr>
+                    </thead>
+                    <tbody id="keysTable">
+                        <!-- Populated by JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+
+    <!-- Success Modal -->
+    <div class="modal" id="successModal">
+        <div class="modal-content">
+            <h2 style="margin-top:0;color:var(--success)">Key Generated!</h2>
+            <p style="color:var(--text-muted);font-size:14px;">Copy and send this key to your customer.</p>
+            <div class="modal-key" id="newKeyValue"></div>
+            <button class="btn-primary" style="margin-bottom:10px" onclick="copyModalKey()">Copy to Clipboard</button>
+            <button class="close-modal" onclick="closeModal()">Close</button>
+        </div>
+    </div>
+
+    <script>
+        // Load keys on start
+        fetchKeys();
+
+        async function fetchKeys() {
+            const res = await fetch('/api/keys');
+            const keys = await res.json();
+            const tbody = document.getElementById('keysTable');
+            tbody.innerHTML = '';
+
+            keys.forEach(k => {
+                const isRevoked = !k.active;
+                const expires = new Date(k.expires);
+                const isExpired = expires < new Date();
+                
+                let statusHtml = '';
+                if(isRevoked) statusHtml = '<span class="badge badge-revoked">Revoked</span>';
+                else if(isExpired) statusHtml = '<span class="badge badge-revoked">Expired</span>';
+                else statusHtml = '<span class="badge badge-active">Active</span>';
+
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td style="font-weight:500">${k.user}</td>
+                    <td style="font-family:monospace;font-size:12px;color:#94a3b8">${k.hwid || 'N/A'}</td>
+                    <td style="font-family:monospace;font-size:12px;color:#cbd5e1">
+                        ${k.key} 
+                        <button class="copy-btn" onclick="copyText('${k.key}')" title="Copy">📋</button>
+                    </td>
+                    <td><span class="badge badge-tier">${k.tier.toUpperCase()}</span></td>
+                    <td style="color:var(--text-muted)">${expires.toISOString().split('T')[0]}</td>
+                    <td>${statusHtml}</td>
+                    <td>
+                        ${!isRevoked ? `<button class="action-btn" onclick="revokeKey('${k.key}')">Revoke</button>` : '-'}
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+        }
+
+        document.getElementById('genForm').addEventListener('submit', async(e) => {
+            e.preventDefault();
+            const btn = document.getElementById('genBtn');
+            btn.textContent = 'Generating...';
+            
+            const res = await fetch('/api/generate', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({
+                    user: document.getElementById('custName').value,
+                    hwid: document.getElementById('custHwid').value,
+                    tier: document.getElementById('tierSelect').value
+                })
+            });
+            const data = await res.json();
+            if(data.success) {
+                document.getElementById('newKeyValue').textContent = data.key.key;
+                document.getElementById('successModal').style.display = 'flex';
+                document.getElementById('genForm').reset();
+                fetchKeys();
+            } else {
+                alert(data.error);
+            }
+            btn.textContent = 'Generate Key';
+        });
+
+        async function revokeKey(key) {
+            if(!confirm('Are you sure you want to revoke this key?')) return;
+            await fetch('/api/revoke', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({key})
+            });
+            fetchKeys();
+        }
+
+        function closeModal() {
+            document.getElementById('successModal').style.display = 'none';
+        }
+
+        function copyText(text) {
+            navigator.clipboard.writeText(text);
+        }
+
+        function copyModalKey() {
+            copyText(document.getElementById('newKeyValue').textContent);
+            const btn = document.querySelector('.modal .btn-primary');
+            btn.textContent = 'Copied!';
+            setTimeout(() => btn.textContent = 'Copy to Clipboard', 2000);
+        }
+    </script>
+</body>
+</html>
