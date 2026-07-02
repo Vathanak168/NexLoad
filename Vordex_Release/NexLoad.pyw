@@ -29,12 +29,15 @@ def start_server():
         show_error("server.py not found in:\n" + BASE)
         return False
 
-    # Install missing packages silently first
-    subprocess.Popen(
-        [sys.executable, '-m', 'pip', 'install', 'flask', 'flask-cors', 'yt-dlp', 'requests',
-         '--quiet', '--disable-pip-version-check'],
+    # Install missing packages silently first, then start the server.
+    req_path = os.path.join(BASE, 'requirements.txt')
+    pip_cmd = [sys.executable, '-m', 'pip', 'install', '--quiet', '--disable-pip-version-check']
+    pip_cmd += ['-r', req_path] if os.path.exists(req_path) else ['flask', 'flask-cors', 'yt-dlp', 'requests', 'SQLAlchemy']
+    subprocess.run(
+        pip_cmd,
         creationflags=subprocess.CREATE_NO_WINDOW,
         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+        check=False,
     )
 
     # Start Flask server with no console window

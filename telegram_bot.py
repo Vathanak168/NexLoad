@@ -68,7 +68,7 @@ def run_bot():
     if admin_ids:
         print(f"🔒 [Telegram Bot] Admin IDs: {admin_ids}")
     else:
-        print("⚠️ [Telegram Bot] No TELEGRAM_ADMIN_IDS set — all users have admin access!")
+        print("⚠️ [Telegram Bot] No TELEGRAM_ADMIN_IDS set — admin commands are disabled.")
 
     print("🤖 [Telegram Bot] Polling started. Listening for messages...")
     retry_delay = 5

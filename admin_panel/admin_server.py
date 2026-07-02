@@ -1,17 +1,20 @@
 import os, json, datetime, hmac, hashlib, uuid
 from flask import Flask, render_template, request, jsonify, redirect, session
+from werkzeug.security import check_password_hash
 
 app = Flask(__name__)
-app.secret_key = "admin-secret-cookie-key"
+app.secret_key = os.environ.get("ADMIN_SESSION_SECRET") or os.environ.get("SECRET_KEY") or os.urandom(32)
 
 # Configuration
-ADMIN_USERNAME = "admin"
-ADMIN_PASSWORD = "123"
+ADMIN_USERNAME = os.environ.get("ADMIN_USERNAME", "admin")
+ADMIN_PASSWORD = os.environ.get("ADMIN_PASSWORD", "")
+ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
 LICENSE_DB = os.path.join(PARENT_DIR, "licenses.json")
-SECRET_KEY = b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique"
+_secret_env = os.environ.get("SECRET_KEY", "NexLoad-Secret-2026-ChangeThis-To-Something-Unique")
+SECRET_KEY = _secret_env.encode() if isinstance(_secret_env, str) else _secret_env
 
 TIERS = {
     "trial":    {"days": 3,    "label": "Trial",    "daily_limit": 5,   "batch": False},
@@ -34,6 +37,13 @@ def _make_signature(key_body: str) -> str:
     sig = hmac.new(SECRET_KEY, key_body.encode(), hashlib.sha256).hexdigest()
     return sig[:16].upper()
 
+def _password_ok(password: str) -> bool:
+    if ADMIN_PASSWORD_HASH:
+        return check_password_hash(ADMIN_PASSWORD_HASH, password or "")
+    if ADMIN_PASSWORD:
+        return hmac.compare_digest(ADMIN_PASSWORD, password or "")
+    return False
+
 # ─── Admin Web UI Routes ──────────────────────────────────────────────
 
 @app.route('/')
@@ -44,7 +54,7 @@ def index():
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
-    if data.get('username') == ADMIN_USERNAME and data.get('password') == ADMIN_PASSWORD:
+    if data.get('username') == ADMIN_USERNAME and _password_ok(data.get('password')):
         session['logged_in'] = True
         return jsonify({"success": True})
     return jsonify({"success": False, "message": "Incorrect credentials"}), 401
@@ -174,6 +184,9 @@ def client_validate():
     })
 
 if __name__ == '__main__':
-    # Need to accept from external IPs if testing across network. 
-    # For now, 0.0.0.0 allows client apps to connect to it.
-    app.run(host='0.0.0.0', port=5050, debug=True)
+    if not ADMIN_PASSWORD and not ADMIN_PASSWORD_HASH:
+        print("Admin login disabled: set ADMIN_PASSWORD or ADMIN_PASSWORD_HASH.")
+    host = os.environ.get("ADMIN_HOST", "127.0.0.1")
+    port = int(os.environ.get("ADMIN_PORT", 5050))
+    debug = os.environ.get("ADMIN_DEBUG", "").lower() in ("1", "true", "yes")
+    app.run(host=host, port=port, debug=debug)

@@ -56,10 +56,10 @@ _pending_keygen = {}
 # ─────────────────────────────────────────────────────────────────
 
 def _is_admin(user_id):
-    """Check if user is admin. If no admin IDs configured, allow all (owner mode)."""
+    """Check if user is admin. If no admin IDs configured, deny admin access."""
     admin_ids = config.TELEGRAM_ADMIN_IDS
     if not admin_ids:
-        return True  # No restriction — owner hasn't set admin IDs yet
+        return False
     return user_id in admin_ids
 
 

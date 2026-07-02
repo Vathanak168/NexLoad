@@ -8,13 +8,15 @@ Features:
   - Clean error handling with actionable feedback
 """
 
-import os, threading
+import os, threading, time
 import config
 
 from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
 
 TEMP_DIR = os.path.join(config.BASE_DIR, "bot_temp")
 os.makedirs(TEMP_DIR, exist_ok=True)
+DOWNLOAD_COOLDOWN_SECONDS = int(os.environ.get("BOT_DOWNLOAD_COOLDOWN_SECONDS", "30"))
+_last_download_by_user = {}
 
 
 def _kb_after_download():
@@ -40,6 +42,15 @@ def register_downloader_handlers(bot):
 
     @bot.message_handler(func=lambda m: m.text and (m.text.startswith("http://") or m.text.startswith("https://")))
     def on_url_message(message):
+        user_id = str(message.from_user.id)
+        now = time.time()
+        last = _last_download_by_user.get(user_id, 0)
+        if now - last < DOWNLOAD_COOLDOWN_SECONDS:
+            wait = int(DOWNLOAD_COOLDOWN_SECONDS - (now - last))
+            bot.reply_to(message, f"⏳ Please wait {wait}s before starting another bot download.", parse_mode="HTML")
+            return
+        _last_download_by_user[user_id] = now
+
         url = message.text.strip().split()[0]
         status_msg = bot.reply_to(
             message,

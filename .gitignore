@@ -12,6 +12,11 @@ dist/
 bot_temp/
 downloads/
 *.log
+licenses.json
+bot_users.json
+stats.json
+nexload.db
+MY_LICENSE_KEY.txt
 
 # Environment variables
 .env

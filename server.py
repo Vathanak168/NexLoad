@@ -5,7 +5,8 @@ Supports: YouTube, TikTok, Instagram, Facebook, Pinterest, Twitter/X, 1000+ more
 Features: License auth, stats, custom folder, subtitles, speed limiter
 """
 
-import os, sys, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime
+import os, sys, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime, tempfile
+config = None
 try:
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
@@ -43,7 +44,27 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LICENSE_DB_PATH = os.path.join(_BASE_DIR, 'licenses.json')
 STATS_PATH      = os.path.join(_BASE_DIR, 'stats.json')
 
-def _validate_license(full_key: str, email: str = None) -> dict:
+def _make_email_token(email: str, ttl_seconds: int = 900) -> str:
+    exp = int(time.time()) + ttl_seconds
+    payload = f'{email.strip().lower()}|{exp}'
+    sig = hmac.new(SECRET_KEY, payload.encode(), hashlib.sha256).hexdigest()
+    return f'{payload}|{sig}'
+
+def _verify_email_token(token: str) -> str:
+    try:
+        email, exp_raw, sig = (token or '').split('|', 2)
+        payload = f'{email}|{exp_raw}'
+        expected = hmac.new(SECRET_KEY, payload.encode(), hashlib.sha256).hexdigest()
+        if not hmac.compare_digest(sig, expected):
+            return ''
+        if int(exp_raw) < int(time.time()):
+            return ''
+        email = email.strip().lower()
+        return email if email and '@' in email else ''
+    except Exception:
+        return ''
+
+def _validate_license(full_key: str, email: str = None, allow_bind_email: bool = False) -> dict:
     """Validate license using SQL Database with Gmail account binding"""
     hwid = get_hwid()
     
@@ -74,6 +95,8 @@ def _validate_license(full_key: str, email: str = None) -> dict:
         if email:
             email_clean = email.strip().lower()
             if not bound_email:
+                if not allow_bind_email:
+                    return {'valid': False, 'reason': 'Please verify your Gmail account before linking this key.'}
                 # First activation auto-binding!
                 db.bind_license_email(full_key, email_clean)
                 bound_email = email_clean
@@ -248,7 +271,9 @@ def _download_image_bytes(img_url, out_path, task_id, progress_base=0, progress_
 
 
 app = Flask(__name__, static_folder=_BASE_DIR, static_url_path='')
-CORS(app)
+_cors_default = f'http://localhost:{PORT},http://127.0.0.1:{PORT},null'
+_allowed_origins = [o.strip() for o in os.environ.get('ALLOWED_ORIGINS', _cors_default).split(',') if o.strip()]
+CORS(app, origins=_allowed_origins)
 
 # ── Serve the UI from root ────────────────────────────────────────
 @app.route('/')
@@ -283,7 +308,15 @@ else:
         print('      Run setup_ffmpeg.bat to install automatically!')
 
 # ── Download destination ──────────────────────────────────────────
-DEFAULT_DOWNLOAD_DIR = os.path.join(os.path.expanduser('~'), 'Downloads', 'NexLoad')
+DEFAULT_DOWNLOAD_DIR = (
+    os.environ.get('DOWNLOAD_DIR')
+    or getattr(config, 'DEFAULT_DOWNLOAD_DIR', '')
+    or (
+        os.path.join(tempfile.gettempdir(), 'NexLoad')
+        if os.environ.get('RENDER') or os.environ.get('DYNO')
+        else os.path.join(os.path.expanduser('~'), 'Downloads', 'NexLoad')
+    )
+)
 os.makedirs(DEFAULT_DOWNLOAD_DIR, exist_ok=True)
 
 CUSTOM_FOLDER_PATH = os.path.join(_BASE_DIR, 'custom_folder.txt')
@@ -298,21 +331,47 @@ def get_download_dir():
 DOWNLOAD_DIR = get_download_dir()
 
 # ── Detect Smart Cookies File ─────────────────────────────────────
+YTDLP_CACHE_DIR = os.environ.get('YTDLP_CACHE_DIR') or os.path.join(tempfile.gettempdir(), 'nexload-yt-dlp-cache')
+COOKIE_CACHE_DIR = os.environ.get('YTDLP_COOKIE_CACHE_DIR') or os.path.join(tempfile.gettempdir(), 'nexload-cookies')
+
+def _writable_cookiefile(path):
+    """Return a writable cookie file path; copy read-only secret mounts to /tmp."""
+    if not path or not os.path.exists(path):
+        return None
+    try:
+        normalized = path.replace('\\', '/')
+        if os.access(path, os.W_OK) and not normalized.startswith('/etc/secrets/'):
+            return path
+
+        os.makedirs(COOKIE_CACHE_DIR, exist_ok=True)
+        dst = os.path.join(COOKIE_CACHE_DIR, 'cookies.txt')
+        shutil.copyfile(path, dst)
+        return dst
+    except Exception as e:
+        print(f'  ⚠️  cookies: cannot prepare writable cookie file from {path}: {e}')
+        return None
+
 def get_cookies_file():
     cand_paths = [
+        os.environ.get('YTDLP_COOKIES_FILE', ''),
         '/etc/secrets/cookies.txt',
         '/app/cookies.txt',
         '/app/Cookies/cookies.txt',
         os.path.join(_BASE_DIR, 'Cookies', 'cookies.txt'),
         os.path.join(_BASE_DIR, 'cookies.txt'),
-        os.environ.get('YTDLP_COOKIES_FILE', '')
     ]
     for cp in cand_paths:
-        if cp and os.path.exists(cp):
-            return cp
+        prepared = _writable_cookiefile(cp)
+        if prepared:
+            return prepared
     return None
 
 def apply_cookies(ydl_opts):
+    try:
+        os.makedirs(YTDLP_CACHE_DIR, exist_ok=True)
+        ydl_opts.setdefault('cachedir', YTDLP_CACHE_DIR)
+    except Exception:
+        ydl_opts.setdefault('cachedir', False)
     cf = get_cookies_file()
     if cf:
         ydl_opts['cookiefile'] = cf
@@ -321,12 +380,44 @@ def apply_cookies(ydl_opts):
 # ── In-memory task store ──────────────────────────────────────────
 tasks = {}  # task_id → { status, progress, speed, eta, filename, error }
 
+def require_license(fn):
+    def wrapper(*args, **kwargs):
+        data = request.get_json(silent=True) if request.method in ('POST', 'PUT', 'PATCH') else {}
+        data = data or {}
+        key = str(
+            request.headers.get('X-License-Key')
+            or request.args.get('license_key')
+            or data.get('license_key')
+            or ''
+        ).strip().upper()
+        email = str(
+            request.headers.get('X-License-Email')
+            or request.args.get('license_email')
+            or data.get('license_email')
+            or data.get('email')
+            or ''
+        ).strip().lower()
+
+        if not key:
+            return jsonify({'error': 'License required'}), 401
+
+        result = _validate_license(key, email=email, allow_bind_email=False)
+        if not result.get('valid'):
+            return jsonify({'error': result.get('reason', 'License invalid')}), 403
+
+        request.license_info = result
+        return fn(*args, **kwargs)
+
+    wrapper.__name__ = fn.__name__
+    return wrapper
+
 
 # ─────────────────────────────────────────────────────────────────
 # ROUTE: GET /api/info?url=...
 # Returns video metadata: title, channel, thumbnail, duration, formats
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/info')
+@require_license
 def get_info():
     url = request.args.get('url', '').strip()
     if not url:
@@ -452,6 +543,7 @@ def get_info():
 # Sniff URL to detect: direct image OR platform post with images
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/image-info')
+@require_license
 def get_image_info():
     url = request.args.get('url', '').strip()
     if not url:
@@ -614,6 +706,7 @@ def get_image_info():
 # Returns: { task_id }
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/download', methods=['POST'])
+@require_license
 def start_download():
     data        = request.get_json() or {}
     url         = data.get('url', '').strip()
@@ -1003,19 +1096,30 @@ def ping():
 @app.route('/api/auth/google', methods=['POST'])
 def auth_google():
     data = request.get_json() or {}
-    token = data.get('token', '').strip()
-    email = data.get('email', '').strip().lower()
+    token = str(data.get('token') or '').strip()
+    submitted_email = str(data.get('email') or '').strip().lower()
+    email = ''
     
-    # 1. If Google ID Token provided, verify with Google servers
+    # 1. Verify Google ID Token. Email-only login is allowed only for explicit local/dev fallback.
     if token:
         try:
             resp = requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={token}', timeout=6)
-            if resp.status_code == 200:
-                gdata = resp.json()
-                if str(gdata.get('email_verified', '')).lower() == 'true':
-                    email = gdata.get('email', '').lower()
+            if resp.status_code != 200:
+                return jsonify({'valid': False, 'reason': 'Google token verification failed'}), 401
+            gdata = resp.json()
+            aud = str(gdata.get('aud', ''))
+            if GOOGLE_CLIENT_ID and aud != GOOGLE_CLIENT_ID:
+                return jsonify({'valid': False, 'reason': 'Google token audience mismatch'}), 401
+            if str(gdata.get('email_verified', '')).lower() != 'true':
+                return jsonify({'valid': False, 'reason': 'Google email is not verified'}), 401
+            email = str(gdata.get('email', '')).lower()
         except Exception as e:
             print(f"[Google Auth] Token verification failed: {e}")
+            return jsonify({'valid': False, 'reason': 'Google token verification error'}), 401
+    elif os.environ.get('ALLOW_UNVERIFIED_EMAIL_LOGIN', '').lower() in ('1', 'true', 'yes'):
+        email = submitted_email
+    else:
+        return jsonify({'valid': False, 'reason': 'Google ID token is required'}), 400
             
     if not email or '@' not in email:
         return jsonify({'valid': False, 'reason': 'Invalid or unverified Google email address'}), 400
@@ -1054,6 +1158,7 @@ def auth_google():
         'valid': False,
         'needs_key': True,
         'email': email,
+        'email_token': _make_email_token(email),
         'reason': f'No active license found for {email}. Please enter your License Key to activate Pro access.'
     })
 
@@ -1068,10 +1173,13 @@ def auth_validate():
         data = request.get_json(silent=True) or {}
     except Exception:
         data = {}
-    key  = data.get('key', '').strip().upper()
-    email = data.get('email', '').strip()
+    key  = str(data.get('key') or '').strip().upper()
+    email = str(data.get('email') or '').strip().lower()
+    email_token = str(data.get('email_token') or '').strip()
+    verified_email = _verify_email_token(email_token)
+    allow_bind_email = bool(verified_email and verified_email == email)
     
-    result = _validate_license(key, email=email)
+    result = _validate_license(key, email=email, allow_bind_email=allow_bind_email)
     
     if not key:
         return jsonify(result), 400
@@ -1083,6 +1191,7 @@ def auth_validate():
 # ROUTE: GET /api/stats — Return download statistics
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/stats')
+@require_license
 def get_stats():
     return jsonify(_load_stats())
 
@@ -1092,6 +1201,7 @@ def get_stats():
 # Body: { folder: "C:\\path\\to\\folder" }
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/set-folder', methods=['POST'])
+@require_license
 def set_folder():
     data   = request.get_json() or {}
     folder = data.get('folder', '').strip()
@@ -1111,6 +1221,7 @@ def set_folder():
 # ROUTE: GET /api/get-folder — Returns current download folder
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/get-folder')
+@require_license
 def get_folder():
     return jsonify({'folder': get_download_dir()})
 
@@ -1120,6 +1231,7 @@ def get_folder():
 # Opens Windows Explorer to the download folder
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/open-folder', methods=['POST'])
+@require_license
 def open_folder():
     import subprocess, platform as _plat
     try:

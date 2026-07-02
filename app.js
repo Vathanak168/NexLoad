@@ -26,6 +26,13 @@ const state = {
   queuePanelOpen: false,
 };
 
+function authHeaders(extra = {}) {
+  const headers = { ...extra };
+  if (state.licenseKey) headers['X-License-Key'] = state.licenseKey;
+  if (state.licenseEmail) headers['X-License-Email'] = state.licenseEmail;
+  return headers;
+}
+
 // ============================================================
 // I18N
 // ============================================================
@@ -219,6 +226,7 @@ async function processSSOLogin(payload) {
       updateLicenseInfoBox(data);
     } else if (data.needs_key) {
       window.verifiedSSOEmail = data.email;
+      window.verifiedSSOToken = data.email_token || '';
       document.getElementById('step1Google').style.display = 'none';
       document.getElementById('step2Key').style.display = 'block';
       const badge = document.getElementById('verifiedEmailBadge');
@@ -283,7 +291,7 @@ async function submitLicense() {
     const res = await fetch(`${API}/auth/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key, email }),
+      body: JSON.stringify({ key, email, email_token: window.verifiedSSOToken || '' }),
     });
     const data = await res.json();
 
@@ -536,7 +544,7 @@ async function analyzeUrl(platform) {
   const imageSupportedPlatforms = ['instagram', 'pinterest', 'tiktok', 'facebook', 'pexels', 'universal'];
 
   try {
-    const res = await fetch(`${API}/info?url=${encodeURIComponent(url)}`);
+    const res = await fetch(`${API}/info?url=${encodeURIComponent(url)}`, { headers: authHeaders() });
     const data = await res.json();
 
     if (!res.ok || data.error) {
@@ -551,7 +559,7 @@ async function analyzeUrl(platform) {
 
     if ((noFormats || isCandidate) && imageSupportedPlatforms.includes(platform)) {
       try {
-        const imgRes = await fetch(`${API}/image-info?url=${encodeURIComponent(url)}`);
+        const imgRes = await fetch(`${API}/image-info?url=${encodeURIComponent(url)}`, { headers: authHeaders() });
         const imgData = await imgRes.json();
         if (imgRes.ok && !imgData.error) {
           data.isImagePost = true;
@@ -954,7 +962,7 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
     }
     const res = await fetch(`${API}/download`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({
         ...dlBody,
         subtitles:   state.settings.subtitles || false,
@@ -1059,7 +1067,7 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
 // ============================================================
 async function openFolder() {
   try {
-    await fetch(`${API}/open-folder`, { method: 'POST' });
+    await fetch(`${API}/open-folder`, { method: 'POST', headers: authHeaders() });
   } catch {
     showToast('Could not open folder. Navigate to Downloads/NexLoad/ manually.', 'info');
   }
@@ -1380,7 +1388,7 @@ function goAutoDetect() {
 async function loadStats() {
   if (!state.serverOnline) return;
   try {
-    const res = await fetch(`${API}/stats`);
+    const res = await fetch(`${API}/stats`, { headers: authHeaders() });
     const data = await res.json();
     renderStats(data);
   } catch { /* ignore */ }
@@ -1474,7 +1482,7 @@ async function setCustomFolder() {
   try {
     const res = await fetch(`${API}/set-folder`, {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ folder }),
     });
     const data = await res.json();
@@ -1491,7 +1499,7 @@ async function refreshFolderDisplay(folder) {
   const el = document.getElementById('download-dir-display');
   if (!folder && state.serverOnline) {
     try {
-      const res = await fetch(`${API}/get-folder`);
+      const res = await fetch(`${API}/get-folder`, { headers: authHeaders() });
       const data = await res.json();
       folder = data.folder;
     } catch { folder = '~/Downloads/NexLoad'; }
@@ -1690,7 +1698,7 @@ async function startPlatformBatch(prefix) {
     try {
       const res = await fetch(API + '/download', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ url: url, quality: '1080', mode: 'video' }),
       });
       const data = await res.json();
@@ -1701,7 +1709,7 @@ async function startPlatformBatch(prefix) {
         es.onmessage = ev => {
           try {
             const t = JSON.parse(ev.data);
-            const pct = Math.round(t.percent || 0);
+            const pct = Math.round(t.progress || 0);
             const fill = document.getElementById(progId + '-fill');
             const label = document.getElementById(progId + '-label');
             const pctEl = document.getElementById(progId + '-pct');

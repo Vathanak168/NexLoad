@@ -8,7 +8,7 @@ echo  ==========================================
 echo.
 echo  Installing / updating dependencies...
 echo.
-pip install flask flask-cors yt-dlp --quiet --upgrade
+pip install -r requirements.txt --quiet --upgrade
 echo.
 echo  ==========================================
 echo    Server is running!
