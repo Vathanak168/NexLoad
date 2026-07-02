@@ -6,6 +6,11 @@ Features: License auth, stats, custom folder, subtitles, speed limiter
 """
 
 import os, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime
+try:
+    from dotenv import load_dotenv
+    load_dotenv()
+except Exception:
+    pass
 from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import yt_dlp
@@ -23,26 +28,22 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LICENSE_DB_PATH = os.path.join(_BASE_DIR, 'licenses.json')
 STATS_PATH      = os.path.join(_BASE_DIR, 'stats.json')
 
-def _validate_license(full_key: str) -> dict:
-    """Connect to Admin Validation Server to check key & HWID"""
-    hwid = get_hwid()
-    
+def _validate_license(full_key: str, email: str = None) -> dict:
+    """Connect to Validation Server to check key & Gmail binding"""
     if not full_key:
-        return {'valid': False, 'reason': 'Key missing. Please enter your license.', 'hwid': hwid}
+        return {'valid': False, 'reason': 'Key missing. Please enter your license.'}
         
     try:
         resp = requests.post(
-            f"{ADMIN_SERVER_URL}/api/client/validate",
-            json={"key": full_key, "hwid": hwid},
+            f"{ADMIN_SERVER_URL}/api/auth/validate",
+            json={"key": full_key, "email": email},
             timeout=8
         )
         if resp.status_code == 200:
-            data = resp.json()
-            data['hwid'] = hwid # Pass HWID to UI
-            return data
-        return {'valid': False, 'reason': 'Admin server returned an error.', 'hwid': hwid}
+            return resp.json()
+        return {'valid': False, 'reason': 'Server returned an error.'}
     except Exception as e:
-        return {'valid': False, 'reason': 'Cannot connect to Server. Ensure Internet is on.', 'hwid': hwid}
+        return {'valid': False, 'reason': 'Cannot connect to Server. Ensure Internet is on.'}
 
 # ── Stats tracking ────────────────────────────────────────────────
 def _load_stats():
@@ -874,7 +875,31 @@ def get_progress(task_id):
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/ping')
 def ping():
-    return jsonify({'ok': True, 'dir': get_download_dir(), 'version': '4.0'})
+    return jsonify({
+        'ok': True,
+        'dir': get_download_dir(),
+        'version': '4.0',
+        'google_client_id': os.environ.get('GOOGLE_CLIENT_ID', '')
+    })
+
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE: POST /api/auth/google  -  Sign-In with Google & Auto Single Sign-On proxy
+# ─────────────────────────────────────────────────────────────────
+@app.route('/api/auth/google', methods=['POST'])
+def auth_google():
+    data = request.get_json() or {}
+    try:
+        resp = requests.post(
+            f"{ADMIN_SERVER_URL}/api/auth/google",
+            json=data,
+            timeout=8
+        )
+        if resp.status_code == 200:
+            return jsonify(resp.json())
+        return jsonify(resp.json() if resp.text else {'valid': False, 'reason': 'Error'}), resp.status_code
+    except Exception as e:
+        return jsonify({'valid': False, 'reason': 'Cannot connect to Server.'}), 500
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -885,11 +910,10 @@ def ping():
 def auth_validate():
     data = request.get_json() or {}
     key  = data.get('key', '').strip().upper()
+    email = data.get('email', '').strip()
     
-    # We always retrieve a response containing valid: bool, and hwid: string
-    result = _validate_license(key)
+    result = _validate_license(key, email=email)
     
-    # Optional shortcut for frontend debugging during setup
     if not key:
         return jsonify(result), 400
         

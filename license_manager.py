@@ -167,15 +167,16 @@ def list_keys():
         print("No licenses generated yet.")
         return
     now = datetime.datetime.now(datetime.timezone.utc)
-    print(f"\n{'KEY':<45} {'USER':<20} {'TIER':<10} {'EXPIRES':<12} {'STATUS'}")
-    print("─" * 110)
+    print(f"\n{'KEY':<45} {'USER':<18} {'TIER':<10} {'BOUND GMAIL':<25} {'EXPIRES':<12} {'STATUS'}")
+    print("─" * 125)
     for key, rec in db.items():
         expire = datetime.datetime.fromisoformat(rec["expires"])
         if expire.tzinfo is None:
             expire = expire.replace(tzinfo=datetime.timezone.utc)
         days_left = (expire - now).days
         status = "REVOKED" if not rec["active"] else ("EXPIRED" if days_left < 0 else f"{days_left}d left")
-        print(f"{key:<45} {rec.get('user','?'):<20} {rec['tier']:<10} {expire.date()!s:<12} {status}")
+        bound = rec.get("bound_email") or "-"
+        print(f"{key:<45} {rec.get('user','?'):<18} {rec['tier']:<10} {bound:<25} {expire.date()!s:<12} {status}")
     print()
 
 

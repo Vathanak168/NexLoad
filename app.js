@@ -20,6 +20,7 @@ const state = {
     speedLimit: '', subtitles: false, subLang: 'en', theme: 'dark', autoDetectBar: false,
   })),
   licenseKey: localStorage.getItem('nexload_license') || null,
+  licenseEmail: localStorage.getItem('nexload_email') || null,
   licenseInfo: null,
   queue: [],   // active downloads queue
   queuePanelOpen: false,
@@ -146,15 +147,89 @@ const platformColors = { youtube: '#ff0033', tiktok: '#00f0ea', facebook: '#1877
 // ============================================================
 // SERVER STATUS CHECK
 // ============================================================
+let googleSdkInitialized = false;
 async function checkServer() {
   try {
     const res = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(10000) });
     const d = await res.json();
     setServerStatus(d.ok === true);
     if (d.dir) state.downloadDir = d.dir;
+    if (d.google_client_id) {
+      initGoogleSignIn(d.google_client_id);
+    }
   } catch {
     setServerStatus(false);
   }
+}
+
+function initGoogleSignIn(clientId) {
+  if (googleSdkInitialized || !clientId || !window.google || !google.accounts || !google.accounts.id) return;
+  googleSdkInitialized = true;
+  google.accounts.id.initialize({
+    client_id: clientId,
+    callback: handleGoogleCredentialResponse
+  });
+  const container = document.getElementById('googleSignInDiv');
+  if (container) {
+    google.accounts.id.renderButton(container, { theme: 'outline', size: 'large', width: 260 });
+  }
+}
+
+async function handleGoogleCredentialResponse(response) {
+  if (!response || !response.credential) return;
+  await processSSOLogin({ token: response.credential });
+}
+
+async function continueWithEmail() {
+  const emailInput = document.getElementById('loginEmailInput');
+  const errorEl = document.getElementById('loginError1');
+  const btn = document.getElementById('ssoNextBtn');
+  const email = (emailInput?.value || '').trim();
+  if (!email || !email.includes('@')) {
+    if (errorEl) errorEl.textContent = 'Please enter a valid Google email address.';
+    return;
+  }
+  if (btn) { btn.disabled = true; btn.textContent = 'Verifying...'; }
+  if (errorEl) errorEl.textContent = '';
+  await processSSOLogin({ email });
+  if (btn) { btn.disabled = false; btn.textContent = 'Next →'; }
+}
+
+async function processSSOLogin(payload) {
+  const errorEl = document.getElementById('loginError1');
+  try {
+    const res = await fetch(`${API}/auth/google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+    const data = await res.json();
+    if (data.valid && data.auto_login) {
+      localStorage.setItem('nexload_license', data.key);
+      localStorage.setItem('nexload_email', data.bound_email);
+      state.licenseKey = data.key;
+      state.licenseEmail = data.bound_email;
+      state.licenseInfo = data;
+      hideLicenseOverlay();
+      showToast(`✅ Automatic SSO Login: Welcome, ${data.user}!`, 'success');
+      updateLicenseInfoBox(data);
+    } else if (data.needs_key) {
+      window.verifiedSSOEmail = data.email;
+      document.getElementById('step1Google').style.display = 'none';
+      document.getElementById('step2Key').style.display = 'block';
+      const badge = document.getElementById('verifiedEmailBadge');
+      if (badge) badge.textContent = data.email;
+    } else {
+      if (errorEl) errorEl.textContent = '❌ ' + (data.reason || 'Authentication failed');
+    }
+  } catch (err) {
+    if (errorEl) errorEl.textContent = '❌ Server error during SSO check.';
+  }
+}
+
+function backToStep1() {
+  document.getElementById('step2Key').style.display = 'none';
+  document.getElementById('step1Google').style.display = 'block';
 }
 
 function setServerStatus(online) {
@@ -180,9 +255,13 @@ async function submitLicense() {
   const input = document.getElementById('licenseKeyInput');
   const errorEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
-  const statusEl = document.getElementById('loginStatus');
   const key = (input?.value || '').trim().toUpperCase();
+  const email = window.verifiedSSOEmail || state.licenseEmail || '';
 
+  if (!email || !email.includes('@')) {
+    if (errorEl) errorEl.textContent = 'Please complete Gmail verification first.';
+    return;
+  }
   if (!key || key.length < 10) {
     if (errorEl) errorEl.textContent = 'Please enter a valid license key.';
     return;
@@ -200,32 +279,29 @@ async function submitLicense() {
     const res = await fetch(`${API}/auth/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, email }),
     });
     const data = await res.json();
 
     if (data.valid) {
       localStorage.setItem('nexload_license', key);
+      localStorage.setItem('nexload_email', email);
       state.licenseKey = key;
+      state.licenseEmail = email;
       state.licenseInfo = data;
       hideLicenseOverlay();
-      showToast(`✅ Welcome, ${data.user}! ${data.tier_label} license active (${data.days_left} days left)`, 'success');
+      showToast(`✅ Welcome, ${data.user}! Bound to ${data.bound_email || email}`, 'success');
       updateLicenseInfoBox(data);
     } else {
       if (errorEl) errorEl.textContent = '❌ ' + (data.reason || 'Invalid key');
       input.style.borderColor = 'rgba(239,68,68,0.6)';
-    }
-
-    if (data.hwid) {
-      const hwidDisplay = document.getElementById('hwidDisplay');
-      if (hwidDisplay) hwidDisplay.textContent = data.hwid;
     }
   } catch (err) {
     if (errorEl) errorEl.textContent = '❌ Server error. Make sure server is running.';
   }
 
   btn.disabled = false;
-  btn.textContent = 'Activate & Enter';
+  btn.textContent = 'Activate & Link';
 }
 
 function hideLicenseOverlay() {
@@ -239,20 +315,42 @@ function hideLicenseOverlay() {
 
 async function checkCachedLicense() {
   const key = state.licenseKey;
-  if (!key) return false;
+  const email = state.licenseEmail;
+  if (!key && !email) return false;
   // Wait for server to be online
   await checkServer();
   if (!state.serverOnline) {
-    // If server offline, allow app to open (offline grace)
     hideLicenseOverlay();
     showToast('⚠️ Running in offline mode. Connect server to validate license.', 'info');
     return true;
   }
+
+  // 1. If email session stored, check automatic Single Sign-On (SSO) first!
+  if (email) {
+    try {
+      const res = await fetch(`${API}/auth/google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email })
+      });
+      const data = await res.json();
+      if (data.valid && data.auto_login) {
+        localStorage.setItem('nexload_license', data.key);
+        state.licenseKey = data.key;
+        state.licenseInfo = data;
+        hideLicenseOverlay();
+        updateLicenseInfoBox(data);
+        return true;
+      }
+    } catch {}
+  }
+
+  if (!key) return false;
   try {
     const res = await fetch(`${API}/auth/validate`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ key }),
+      body: JSON.stringify({ key, email }),
     });
     const data = await res.json();
     if (data.valid) {
@@ -262,18 +360,14 @@ async function checkCachedLicense() {
       return true;
     }
     
-    // Key invalid — clear it
-    if (data.hwid) {
-      const hwidDisplay = document.getElementById('hwidDisplay');
-      if (hwidDisplay) hwidDisplay.textContent = data.hwid;
-    }
-    
     localStorage.removeItem('nexload_license');
+    localStorage.removeItem('nexload_email');
     state.licenseKey = null;
-    document.getElementById('loginError').textContent = '❌ ' + (data.reason || 'License expired');
+    state.licenseEmail = null;
+    const errEl = document.getElementById('loginError1') || document.getElementById('loginError');
+    if (errEl) errEl.textContent = '❌ ' + (data.reason || 'License verification failed');
     return false;
   } catch {
-    // Server error — allow offline grace
     hideLicenseOverlay();
     return false;
   }

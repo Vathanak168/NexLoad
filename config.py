@@ -34,6 +34,9 @@ TELEGRAM_BOT_TOKEN = os.environ.get("TELEGRAM_BOT_TOKEN", "")
 _admin_ids_str = os.environ.get("TELEGRAM_ADMIN_IDS", "")
 TELEGRAM_ADMIN_IDS = [int(x.strip()) for x in _admin_ids_str.split(",") if x.strip().isdigit()]
 
+# Google OAuth 2.0 Client ID for Sign-In with Google SSO
+GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+
 # Default Downloads Directory
 DEFAULT_DOWNLOAD_DIR = os.environ.get("DOWNLOAD_DIR", os.path.join(os.path.expanduser("~"), "Downloads", "NexLoad"))
 

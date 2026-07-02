@@ -87,7 +87,7 @@ def _kb_main_menu(user_id):
         InlineKeyboardButton("🔍 Validate a Key", callback_data="nav:validate_prompt")
     )
     markup.row(
-        InlineKeyboardButton("🌐 Open NexLoad Web", url="https://nexload.onrender.com")
+        InlineKeyboardButton("🌐 Open NexLoad Web", url="https://nexload-k7h6.onrender.com/")
     )
     return markup
 

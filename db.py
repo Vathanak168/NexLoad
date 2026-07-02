@@ -36,6 +36,7 @@ class LicenseRecord(Base):
     signature = Column(String(64))
     key_body = Column(String(128))
     hwid = Column(String(128), nullable=True)
+    bound_email = Column(String(128), nullable=True)
     daily_limit = Column(Integer, default=5)
     batch = Column(Boolean, default=False)
 
@@ -51,6 +52,7 @@ class LicenseRecord(Base):
             "signature": self.signature,
             "key_body": self.key_body,
             "hwid": self.hwid,
+            "bound_email": self.bound_email,
             "daily_limit": self.daily_limit,
             "batch": self.batch
         }
@@ -90,6 +92,14 @@ def get_session():
 def init_db():
     """Create tables and auto-migrate existing JSON data if tables are empty."""
     Base.metadata.create_all(bind=engine)
+    try:
+        from sqlalchemy import text
+        with engine.connect() as conn:
+            conn.execute(text("ALTER TABLE licenses ADD COLUMN bound_email VARCHAR(128);"))
+            conn.commit()
+    except Exception:
+        pass
+
     session = get_session()
     try:
         # 1. Migrate licenses.json
@@ -111,6 +121,7 @@ def init_db():
                             signature=rec.get("signature", ""),
                             key_body=rec.get("key_body", ""),
                             hwid=rec.get("hwid", None),
+                            bound_email=rec.get("bound_email", None),
                             daily_limit=rec.get("daily_limit", 5),
                             batch=rec.get("batch", False)
                         )
@@ -168,6 +179,16 @@ def get_license(key: str) -> dict:
     finally:
         session.close()
 
+def get_license_by_email(email: str) -> dict:
+    session = get_session()
+    try:
+        if not email:
+            return None
+        rec = session.query(LicenseRecord).filter_by(bound_email=email.strip().lower(), active=True).first()
+        return rec.to_dict() if rec else None
+    finally:
+        session.close()
+
 def save_license(data: dict):
     session = get_session()
     try:
@@ -182,11 +203,24 @@ def save_license(data: dict):
             signature=data.get("signature", ""),
             key_body=data.get("key_body", ""),
             hwid=data.get("hwid", None),
+            bound_email=data.get("bound_email", None),
             daily_limit=data.get("daily_limit", 5),
             batch=data.get("batch", False)
         )
         session.merge(rec)
         session.commit()
+    finally:
+        session.close()
+
+def bind_license_email(key: str, email: str) -> bool:
+    session = get_session()
+    try:
+        rec = session.query(LicenseRecord).filter_by(key=key.strip().upper()).first()
+        if rec:
+            rec.bound_email = email.strip().lower()
+            session.commit()
+            return True
+        return False
     finally:
         session.close()
 

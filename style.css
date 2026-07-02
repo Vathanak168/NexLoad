@@ -33,12 +33,12 @@
   --pi: #e60023;
   --tw: #1d9bf0;
 
-  --navbar-h: 94px;
+  --navbar-h: 72px;
   --transition: 0.25s cubic-bezier(.4, 0, .2, 1);
 }
 
 html {
-  font-size: 20.5px;
+  font-size: 15.5px;
 }
 
 /* ---- 2. RESET & BASE ---- */
@@ -2519,11 +2519,11 @@ body {
   position: relative;
   z-index: 1;
   width: 100%;
-  max-width: 460px;
+  max-width: 390px;
   background: rgba(255,255,255,0.05);
   border: 1px solid rgba(255,255,255,0.12);
-  border-radius: 28px;
-  padding: 48px 44px;
+  border-radius: 20px;
+  padding: 34px 30px;
   backdrop-filter: blur(30px);
   box-shadow: 0 40px 120px rgba(0,0,0,0.6), 0 0 0 1px rgba(168,85,247,0.1);
   animation: slideUp 0.5s cubic-bezier(.16,1,.3,1);
@@ -2532,37 +2532,37 @@ body {
 .login-logo {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 32px;
+  gap: 12px;
+  margin-bottom: 24px;
 }
 
 .login-title {
-  font-size: 1.6rem;
+  font-size: 1.35rem;
   font-weight: 800;
   letter-spacing: -0.5px;
-  margin-bottom: 10px;
+  margin-bottom: 8px;
 }
 
 .login-sub {
-  font-size: 0.88rem;
+  font-size: 0.85rem;
   color: var(--text-secondary);
-  line-height: 1.6;
-  margin-bottom: 28px;
+  line-height: 1.5;
+  margin-bottom: 20px;
 }
 
 .login-input-wrap {
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .login-key-input {
   width: 100%;
-  padding: 16px 20px;
-  border-radius: 14px;
+  padding: 12px 16px;
+  border-radius: 12px;
   border: 1.5px solid rgba(168,85,247,0.3);
   background: rgba(0,0,0,0.3);
   color: var(--text-primary);
   font-family: 'Outfit', monospace;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 600;
   letter-spacing: 1px;
   outline: none;
@@ -2577,22 +2577,22 @@ body {
 
 .login-error {
   color: #ef4444;
-  font-size: 0.82rem;
-  margin-top: 8px;
-  min-height: 20px;
+  font-size: 0.8rem;
+  margin-top: 6px;
+  min-height: 18px;
   text-align: center;
   font-weight: 500;
 }
 
 .login-btn {
   width: 100%;
-  padding: 16px;
-  border-radius: 14px;
+  padding: 12px;
+  border-radius: 12px;
   border: none;
   background: linear-gradient(135deg, var(--grad-start), var(--grad-mid));
   color: #fff;
   font-family: 'Outfit', sans-serif;
-  font-size: 1rem;
+  font-size: 0.92rem;
   font-weight: 700;
   cursor: pointer;
   transition: all 0.2s;
@@ -3150,4 +3150,84 @@ body.light-theme .aurora-blob { opacity: 0.06; }
 #weekChart {
   display: block;
 }
+
+/* ---- RESPONSIVE MOBILE OPTIMIZATION ---- */
+@media (max-width: 768px) {
+  :root {
+    --navbar-h: 62px;
+  }
+  html {
+    font-size: 14.5px;
+  }
+  .navbar {
+    padding: 0 12px;
+    gap: 8px;
+  }
+  .brand-icon {
+    width: 36px;
+    height: 36px;
+  }
+  .brand-name {
+    font-size: 1.2rem;
+  }
+  .brand-badge {
+    display: none;
+  }
+  .nav-tabs {
+    gap: 2px;
+  }
+  .nav-tab {
+    padding: 6px 10px;
+    font-size: 0.85rem;
+  }
+  .main-content {
+    padding: 20px 14px 70px;
+  }
+  .hero-title {
+    font-size: 1.7rem;
+    letter-spacing: -0.5px;
+  }
+  .hero-subtitle {
+    font-size: 0.9rem;
+    margin-bottom: 16px;
+  }
+  .platform-grid {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 36px;
+  }
+  .platform-card {
+    padding: 16px 18px;
+    gap: 14px;
+    border-radius: 14px;
+  }
+  .url-bar-wrap, .url-input-wrap {
+    flex-direction: column;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 16px;
+  }
+  .url-input {
+    width: 100%;
+    text-align: center;
+  }
+  .paste-btn, .dl-btn {
+    width: 100%;
+    justify-content: center;
+  }
+  .autodetect-bar {
+    min-width: unset;
+    width: 94vw;
+    padding: 8px 14px;
+    bottom: 14px;
+    flex-wrap: wrap;
+    border-radius: 20px;
+  }
+  .login-box {
+    max-width: 92vw;
+    padding: 26px 20px;
+    border-radius: 18px;
+  }
+}
+
 

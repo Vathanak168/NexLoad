@@ -22,10 +22,12 @@ try:
     HOST = config.HOST
     PORT = config.PORT
     SECRET_KEY = config.SECRET_KEY
+    GOOGLE_CLIENT_ID = getattr(config, 'GOOGLE_CLIENT_ID', '') or os.environ.get("GOOGLE_CLIENT_ID", "")
 except ImportError:
     HOST = os.environ.get("HOST", "0.0.0.0")
     PORT = int(os.environ.get("PORT", 5000))
     SECRET_KEY = b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique"
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
 if isinstance(SECRET_KEY, str):
     SECRET_KEY = SECRET_KEY.encode()
 
@@ -41,17 +43,16 @@ _BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 LICENSE_DB_PATH = os.path.join(_BASE_DIR, 'licenses.json')
 STATS_PATH      = os.path.join(_BASE_DIR, 'stats.json')
 
-def _validate_license(full_key: str) -> dict:
-    """Validate license using SQL Database"""
+def _validate_license(full_key: str, email: str = None) -> dict:
+    """Validate license using SQL Database with Gmail account binding"""
     hwid = get_hwid()
     
     if not full_key:
-        return {'valid': False, 'reason': 'Key missing. Please enter your license.', 'hwid': hwid}
+        return {'valid': False, 'reason': 'Key missing. Please enter your license.'}
         
     try:
         rec = db.get_license(full_key)
         if not rec:
-            # Fallback check JSON file just in case
             if os.path.exists(LICENSE_DB_PATH):
                 try:
                     with open(LICENSE_DB_PATH, "r", encoding="utf-8") as f:
@@ -63,14 +64,28 @@ def _validate_license(full_key: str) -> dict:
                     pass
                     
         if not rec:
-            return {'valid': False, 'reason': 'Key not found in system', 'hwid': hwid}
+            return {'valid': False, 'reason': 'Key not found in system'}
         
         if not rec.get('active'):
-            return {'valid': False, 'reason': 'Key has been revoked or banned', 'hwid': hwid}
+            return {'valid': False, 'reason': 'Key has been revoked or banned'}
             
-        # Check HWID Lock if it exists on the key
-        if rec.get('hwid') and rec.get('hwid') != hwid:
-            return {'valid': False, 'reason': 'Device Mismatch! This key belongs to another PC.', 'hwid': hwid}
+        # Check Gmail Cloud Binding (Replacing legacy HWID Lock)
+        bound_email = rec.get('bound_email')
+        if email:
+            email_clean = email.strip().lower()
+            if not bound_email:
+                # First activation auto-binding!
+                db.bind_license_email(full_key, email_clean)
+                bound_email = email_clean
+                rec['bound_email'] = email_clean
+            elif bound_email.lower() != email_clean:
+                parts = bound_email.split('@')
+                masked = (parts[0][:2] + '***@' + parts[1]) if len(parts) == 2 else 'another Gmail account'
+                return {'valid': False, 'reason': f'Key is registered to {masked}. Please log in with that Gmail account.', 'bound_email': masked}
+        elif bound_email:
+            parts = bound_email.split('@')
+            masked = (parts[0][:2] + '***@' + parts[1]) if len(parts) == 2 else 'another Gmail account'
+            return {'valid': False, 'reason': f'Please enter your registered Gmail account ({masked}) to use this key.', 'bound_email': masked}
             
         # Verify Cryptographic Signature
         sig16 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:16].upper()
@@ -78,7 +93,7 @@ def _validate_license(full_key: str) -> dict:
         sig6 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:6].upper()
         
         if rec.get('signature') not in [sig16, sig6, sig4]:
-            return {'valid': False, 'reason': 'Key Signature Invalid (Tampered)', 'hwid': hwid}
+            return {'valid': False, 'reason': 'Key Signature Invalid (Tampered)'}
             
         expire_dt = datetime.datetime.fromisoformat(rec['expires'])
         if expire_dt.tzinfo is None:
@@ -87,7 +102,7 @@ def _validate_license(full_key: str) -> dict:
         days_left = (expire_dt - now).days
         
         if days_left < 0:
-            return {'valid': False, 'reason': f'Key expired {-days_left} days ago', 'hwid': hwid}
+            return {'valid': False, 'reason': f'Key expired {-days_left} days ago'}
             
         TIERS = {
             "trial":    {"label": "Trial"},
@@ -100,7 +115,7 @@ def _validate_license(full_key: str) -> dict:
             'valid':       True,
             'reason':      'OK',
             'key':         full_key,
-            'hwid':        hwid,
+            'bound_email': bound_email,
             'tier':        rec['tier'],
             'tier_label':  TIERS.get(rec['tier'], {}).get('label', rec['tier']),
             'user':        rec.get('user', 'Unknown'),
@@ -110,7 +125,7 @@ def _validate_license(full_key: str) -> dict:
             'batch':       rec.get('batch', True),
         }
     except Exception as e:
-        return {'valid': False, 'reason': f'Validation Error: {str(e)}', 'hwid': hwid}
+        return {'valid': False, 'reason': f'Validation Error: {str(e)}'}
 
 # ── Stats tracking ────────────────────────────────────────────────
 def _load_stats():
@@ -952,7 +967,74 @@ def get_progress(task_id):
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/ping')
 def ping():
-    return jsonify({'ok': True, 'dir': get_download_dir(), 'version': '4.0'})
+    return jsonify({
+        'ok': True,
+        'dir': get_download_dir(),
+        'version': '4.0',
+        'google_client_id': GOOGLE_CLIENT_ID or os.environ.get('GOOGLE_CLIENT_ID', '')
+    })
+
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE: POST /api/auth/google  -  Sign-In with Google & Auto Single Sign-On
+# Body: { token: "google_id_token", email: "user@gmail.com" }
+# ─────────────────────────────────────────────────────────────────
+@app.route('/api/auth/google', methods=['POST'])
+def auth_google():
+    data = request.get_json() or {}
+    token = data.get('token', '').strip()
+    email = data.get('email', '').strip().lower()
+    
+    # 1. If Google ID Token provided, verify with Google servers
+    if token:
+        try:
+            resp = requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={token}', timeout=6)
+            if resp.status_code == 200:
+                gdata = resp.json()
+                if str(gdata.get('email_verified', '')).lower() == 'true':
+                    email = gdata.get('email', '').lower()
+        except Exception as e:
+            print(f"[Google Auth] Token verification failed: {e}")
+            
+    if not email or '@' not in email:
+        return jsonify({'valid': False, 'reason': 'Invalid or unverified Google email address'}), 400
+        
+    # 2. Check if this verified Gmail already owns an active license in SQL Database
+    rec = db.get_license_by_email(email)
+    if rec:
+        expire_dt = datetime.datetime.fromisoformat(rec['expires'])
+        if expire_dt.tzinfo is None:
+            expire_dt = expire_dt.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        days_left = (expire_dt - now).days
+        if days_left >= 0:
+            TIERS = {
+                "trial":    {"label": "Trial"},
+                "basic":    {"label": "Basic"},
+                "pro":      {"label": "Pro"},
+                "lifetime": {"label": "Lifetime"},
+            }
+            return jsonify({
+                'valid': True,
+                'auto_login': True,
+                'key': rec['key'],
+                'bound_email': email,
+                'tier': rec['tier'],
+                'tier_label': TIERS.get(rec['tier'], {}).get('label', rec['tier']),
+                'user': rec.get('user', 'Unknown'),
+                'expires': rec['expires'],
+                'days_left': days_left,
+                'daily_limit': rec.get('daily_limit', 0),
+                'batch': rec.get('batch', True),
+            })
+            
+    # 3. No active license found -> prompt UI to ask for license key to bind
+    return jsonify({
+        'valid': False,
+        'needs_key': True,
+        'email': email,
+        'reason': f'No active license found for {email}. Please enter your License Key to activate Pro access.'
+    })
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -963,11 +1045,10 @@ def ping():
 def auth_validate():
     data = request.get_json() or {}
     key  = data.get('key', '').strip().upper()
+    email = data.get('email', '').strip()
     
-    # We always retrieve a response containing valid: bool, and hwid: string
-    result = _validate_license(key)
+    result = _validate_license(key, email=email)
     
-    # Optional shortcut for frontend debugging during setup
     if not key:
         return jsonify(result), 400
         
@@ -1052,7 +1133,8 @@ def _try_start_bot():
                     print(f"⚠️ [Server Boot] Thread bot failed: {ex}")
             threading.Thread(target=_run, daemon=True).start()
 
-_try_start_bot()
+if __name__ == '__main__' or os.environ.get("RENDER") or os.environ.get("DYNO"):
+    _try_start_bot()
 
 # ─────────────────────────────────────────────────────────────────
 # STARTUP
