@@ -154,19 +154,23 @@ async function checkServer() {
     const d = await res.json();
     setServerStatus(d.ok === true);
     if (d.dir) state.downloadDir = d.dir;
-    if (d.google_client_id) {
-      initGoogleSignIn(d.google_client_id);
-    }
+    initGoogleSignIn(d.google_client_id);
   } catch {
     setServerStatus(false);
+    initGoogleSignIn();
   }
 }
 
 function initGoogleSignIn(clientId) {
-  if (googleSdkInitialized || !clientId || !window.google || !google.accounts || !google.accounts.id) return;
+  const cid = clientId || '923992084689-7vatdvl000adfn4l3h0opvbvg8s24ml8.apps.googleusercontent.com';
+  if (googleSdkInitialized) return;
+  if (!window.google || !google.accounts || !google.accounts.id) {
+    setTimeout(() => initGoogleSignIn(cid), 500);
+    return;
+  }
   googleSdkInitialized = true;
   google.accounts.id.initialize({
-    client_id: clientId,
+    client_id: cid,
     callback: handleGoogleCredentialResponse
   });
   const container = document.getElementById('googleSignInDiv');
