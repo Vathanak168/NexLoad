@@ -300,6 +300,9 @@ DOWNLOAD_DIR = get_download_dir()
 # ── Detect Smart Cookies File ─────────────────────────────────────
 def get_cookies_file():
     cand_paths = [
+        '/etc/secrets/cookies.txt',
+        '/app/cookies.txt',
+        '/app/Cookies/cookies.txt',
         os.path.join(_BASE_DIR, 'Cookies', 'cookies.txt'),
         os.path.join(_BASE_DIR, 'cookies.txt'),
         os.environ.get('YTDLP_COOKIES_FILE', '')
