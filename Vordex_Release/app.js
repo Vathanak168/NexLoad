@@ -440,10 +440,28 @@ document.getElementById('licenseKeyInput')?.addEventListener('keydown', e => {
 function navigateTo(pageId) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   const target = document.getElementById('page-' + pageId);
-  if (target) target.classList.add('active');
+  if (target) {
+    target.classList.add('active');
+    if (pageId !== 'home') {
+      let backBar = target.querySelector('.subpage-back-bar');
+      if (!backBar) {
+        backBar = document.createElement('div');
+        backBar.className = 'subpage-back-bar';
+        backBar.innerHTML = `
+          <button class="btn-subpage-back" onclick="navigateTo('home')">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
+            Back to Command Console
+          </button>
+        `;
+        target.insertBefore(backBar, target.firstChild);
+      }
+    }
+  }
   document.querySelectorAll('.nav-tab').forEach(tab =>
     tab.classList.toggle('active', tab.dataset.page === pageId)
   );
+  const navBackBtn = document.getElementById('navBackBtn');
+  if (navBackBtn) navBackBtn.style.display = (pageId === 'home') ? 'none' : 'inline-flex';
   state.currentPage = pageId;
 }
 
@@ -550,7 +568,7 @@ async function analyzeUrl(platform) {
         </div>
         <div style="display:flex; gap:12px; margin-top:4px; flex-wrap:wrap;">
           <a href="nexload://open?url=${encodeURIComponent(url)}" class="btn-primary-sm" style="text-decoration:none;">⚡ Open Desktop App</a>
-          <a href="https://github.com/Vathanak168/NexLoad/releases" target="_blank" class="btn-secondary-sm" style="text-decoration:none;">📥 Install Desktop App</a>
+          <a href="https://github.com/Vathanak168/NexLoad/releases/latest/download/NexLoad.exe" class="btn-secondary-sm" style="text-decoration:none;">📥 Download Installer (.exe)</a>
         </div>
       </div>
     `;

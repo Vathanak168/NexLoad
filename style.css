@@ -3852,3 +3852,66 @@ body.light-theme .aurora-blob { opacity: 0.06; }
   transform: translateY(-1px);
   box-shadow: 0 6px 20px rgba(168,85,247,.5);
 }
+
+/* =========================================================================
+   MOBILE & SUBPAGE NAVIGATION UPGRADE (BACK BTN + SETTINGS BTN)
+   ========================================================================= */
+
+.nav-back-btn, .nav-icon-btn {
+  background: rgba(255, 255, 255, 0.08);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  color: #fff;
+  width: 36px;
+  height: 36px;
+  border-radius: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+  flex-shrink: 0;
+}
+
+.nav-back-btn:hover, .nav-icon-btn:hover {
+  background: rgba(139, 92, 246, 0.25);
+  border-color: rgba(139, 92, 246, 0.5);
+  transform: translateY(-1px);
+}
+
+.subpage-back-bar {
+  max-width: var(--content-wide, 1120px);
+  margin: 0 auto 18px auto;
+  padding: 0 4px;
+}
+
+.btn-subpage-back {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  color: #e2e8f0;
+  padding: 8px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.btn-subpage-back:hover {
+  background: rgba(139, 92, 246, 0.22);
+  border-color: rgba(139, 92, 246, 0.5);
+  color: #fff;
+  transform: translateX(-3px);
+}
+
+@media (max-width: 640px) {
+  .nav-right {
+    gap: 8px;
+  }
+  .nav-icon-btn {
+    width: 34px;
+    height: 34px;
+  }
+}

@@ -452,8 +452,8 @@ def get_info():
         return jsonify({'error': 'URL is required'}), 400
 
     if ('youtube.com' in url.lower() or 'youtu.be' in url.lower()) and _is_cloud_environment():
-        msg = 'YouTube download មិនអាចប្រើលើ Web បានទេ។ សូម Download NexLoad Desktop App ដើម្បីប្រើមុខងារនេះ។ [Download Desktop App]'
-        return jsonify({'error': msg, 'is_redirect': True, 'download_url': 'https://github.com/Vathanak168/NexLoad/releases'}), 400
+        msg = 'YouTube download មិនអាចប្រើលើ Web បានទេ។ សូម Download NexLoad Desktop App ដើម្បីប្រើមុខងារនេះ។'
+        return jsonify({'error': msg, 'is_redirect': True, 'download_url': 'https://github.com/Vathanak168/NexLoad/releases/latest/download/NexLoad.exe'}), 400
 
     # ── Intercept Pexels before yt-dlp (which fails via Cloudflare 403) ──
     if 'pexels.com' in url.lower():
@@ -754,8 +754,8 @@ def start_download():
         return jsonify({'error': 'URL is required'}), 400
 
     if ('youtube.com' in url.lower() or 'youtu.be' in url.lower()) and _is_cloud_environment():
-        msg = 'YouTube download មិនអាចប្រើលើ Web បានទេ។ សូម Download NexLoad Desktop App ដើម្បីប្រើមុខងារនេះ។ [Download Desktop App]'
-        return jsonify({'error': msg, 'is_redirect': True, 'download_url': 'https://github.com/Vathanak168/NexLoad/releases'}), 400
+        msg = 'YouTube download មិនអាចប្រើលើ Web បានទេ។ សូម Download NexLoad Desktop App ដើម្បីប្រើមុខងារនេះ។'
+        return jsonify({'error': msg, 'is_redirect': True, 'download_url': 'https://github.com/Vathanak168/NexLoad/releases/latest/download/NexLoad.exe'}), 400
 
     # Refresh download dir in case it was changed
     DOWNLOAD_DIR = get_download_dir()
