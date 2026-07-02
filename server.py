@@ -559,14 +559,14 @@ def get_info():
         msg = str(e)
         # 🆕 "Unsupported URL" or cloudflare 403 usually means it's an image/photo post 
         # Return empty formats + candidate flag so frontend tries /api/image-info instead
-        if 'Unsupported URL' in msg or 'unsupported url' in msg.lower() or 'HTTP Error 403' in msg:
+        if any(k in msg.lower() for k in ('unsupported url', 'http error 403', 'no video formats found')) or any(p in url for p in ('pin.it', 'pinterest.com')):
             return jsonify({
-                'title':          'Unknown',
+                'title':          'Candidate / Image Post',
                 'channel':        '',
                 'thumbnail':      '',
                 'duration':       '',
                 'views':          '',
-                'platform':       '',
+                'platform':       'Pinterest' if any(p in url for p in ('pin.it', 'pinterest.com')) else '',
                 'webpage_url':    url,
                 'formats':        [],
                 'isImageCandidate': True,
@@ -636,6 +636,29 @@ def get_image_info():
                 'thumbnail': img_url,
                 'title':     f'Pexels Photo {pid}'
             })
+
+    # ── Pinterest pin or shortlink (pin.it / pinterest.com) ──
+    if ('pin.it/' in url or 'pinterest.com/' in url) and HAS_REQUESTS:
+        try:
+            req_p = _requests.get(url, headers={'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)'}, timeout=10, allow_redirects=True)
+            html_p = req_p.text
+            m_img = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_p) or \
+                    re.search(r'<meta[^>]*content=["\']([^"\']+)["\'][^>]*property=["\']og:image["\']', html_p)
+            if m_img:
+                img_url = m_img.group(1)
+                t_m = re.search(r'<meta[^>]*property=["\']og:title["\'][^>]*content=["\']([^"\']+)["\']', html_p)
+                p_title = t_m.group(1).strip() if t_m else 'Pinterest Pin'
+                return jsonify({
+                    'type':      'platform',
+                    'platform':  'Pinterest',
+                    'title':     p_title,
+                    'thumbnail': img_url,
+                    'count':     1,
+                    'images':    [{'url': img_url, 'thumb': img_url, 'title': p_title}],
+                    'is_image':  True,
+                })
+        except Exception as pin_e:
+            print(f"  [Pinterest image-info fallback note] {pin_e}")
 
     # ── TikTok slideshow — tikwm.com API (handles /photo/ AND short vt.tiktok.com links) ──
     if _is_any_tiktok(url) and HAS_REQUESTS:
@@ -1085,10 +1108,70 @@ def start_download():
             _record_download(platform=url.split('/')[2] if '/' in url else 'unknown')
             tasks[task_id].update({'status': 'done', 'progress': 100})
 
-        except yt_dlp.utils.DownloadError as e:
-            tasks[task_id].update({'status': 'error', 'error': str(e).replace('[youtube]','').strip()})
         except Exception as e:
-            tasks[task_id].update({'status': 'error', 'error': str(e)})
+            err_str = str(e).replace('[youtube]','').strip()
+            # Universal fallback for blocked or non-video URLs (TikTok 403, Pinterest, etc.)
+            if HAS_REQUESTS:
+                try:
+                    if _is_any_tiktok(url):
+                        td = _tikwm_fetch(url)
+                        if td:
+                            play_url = td.get('play') or td.get('wmplay')
+                            if not play_url and td.get('images'):
+                                play_url = td['images'][0]
+                            if play_url:
+                                ext = '.mp4' if '.mp4' in play_url or mode != 'image' else '.jpg'
+                                safe_name = re.sub(r'[^\w.\-]', '_', td.get('title') or f'TikTok_{task_id}')[:50] + ext
+                                out_path = os.path.join(DOWNLOAD_DIR, safe_name)
+                                tasks[task_id].update({'status': 'downloading', 'filename': safe_name})
+                                resp = _requests.get(play_url, stream=True, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+                                resp.raise_for_status()
+                                total = int(resp.headers.get('Content-Length', 0))
+                                done = 0
+                                with open(out_path, 'wb') as f:
+                                    for chunk in resp.iter_content(8192):
+                                        if chunk:
+                                            f.write(chunk)
+                                            done += len(chunk)
+                                            pct = int(done / total * 100) if total else 50
+                                            tasks[task_id].update({'progress': pct, 'size': f'{done // 1024} KB'})
+                                _record_download(platform='tiktok')
+                                tasks[task_id].update({'status': 'done', 'progress': 100, 'filepath': out_path, 'filename': safe_name})
+                                return
+                    elif 'pin.it/' in url or 'pinterest.com/' in url:
+                        req_p = _requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, allow_redirects=True)
+                        html_p = req_p.text
+                        media_url = None
+                        if mode != 'image':
+                            m_vid = re.search(r'<meta[^>]*property=["\']og:video["\'][^>]*content=["\']([^"\']+)["\']', html_p) or \
+                                    re.search(r'<meta[^>]*content=["\']([^"\']+)["\'][^>]*property=["\']og:video["\']', html_p)
+                            if m_vid: media_url = m_vid.group(1)
+                        if not media_url:
+                            m_img = re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html_p) or \
+                                    re.search(r'<meta[^>]*content=["\']([^"\']+)["\'][^>]*property=["\']og:image["\']', html_p)
+                            if m_img: media_url = m_img.group(1)
+                        if media_url:
+                            ext = '.mp4' if '.mp4' in media_url else '.jpg'
+                            safe_name = f'Pinterest_{task_id}{ext}'
+                            out_path = os.path.join(DOWNLOAD_DIR, safe_name)
+                            tasks[task_id].update({'status': 'downloading', 'filename': safe_name})
+                            resp = _requests.get(media_url, stream=True, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
+                            resp.raise_for_status()
+                            total = int(resp.headers.get('Content-Length', 0))
+                            done = 0
+                            with open(out_path, 'wb') as f:
+                                for chunk in resp.iter_content(8192):
+                                    if chunk:
+                                        f.write(chunk)
+                                        done += len(chunk)
+                                        pct = int(done / total * 100) if total else 50
+                                        tasks[task_id].update({'progress': pct, 'size': f'{done // 1024} KB'})
+                            _record_download(platform='pinterest')
+                            tasks[task_id].update({'status': 'done', 'progress': 100, 'filepath': out_path, 'filename': safe_name})
+                            return
+                except Exception:
+                    pass
+            tasks[task_id].update({'status': 'error', 'error': err_str})
 
     threading.Thread(target=run, daemon=True).start()
     return jsonify({'task_id': task_id, 'download_dir': DOWNLOAD_DIR})

@@ -101,11 +101,45 @@ def register_downloader_handlers(bot):
                     )
                 except Exception:
                     pass
-                with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                    info = ydl.extract_info(url, download=True)
-                    filename = ydl.prepare_filename(info)
+                filename = None
+                info = {}
+                try:
+                    with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                        info = ydl.extract_info(url, download=True)
+                        filename = ydl.prepare_filename(info)
+                except Exception as ydl_err:
+                    import urllib.request as _urq, json as _js, re as _re, time as _tm
+                    # Fallback 1: TikTok via TikWM
+                    if 'tiktok.com' in url:
+                        req = _urq.Request(f"https://www.tikwm.com/api/?url={url}", headers={'User-Agent': 'Mozilla/5.0'})
+                        with _urq.urlopen(req) as res:
+                            data = _js.loads(res.read().decode())
+                            if data.get('code') == 0 and data.get('data'):
+                                play_url = data['data'].get('play') or data['data'].get('wmplay')
+                                if not play_url and data['data'].get('images'):
+                                    play_url = data['data']['images'][0]
+                                if play_url:
+                                    ext = '.mp4' if '.mp4' in play_url else '.jpg'
+                                    filename = os.path.join(TEMP_DIR, f"bot_tiktok_{int(_tm.time())}{ext}")
+                                    _urq.urlretrieve(play_url, filename)
+                                    info = {'title': data['data'].get('title', 'TikTok Media')}
+                    # Fallback 2: Pinterest or image post via og:video / og:image
+                    elif 'pin.it/' in url or 'pinterest.com/' in url:
+                        req = _urq.Request(url, headers={'User-Agent': 'Mozilla/5.0'})
+                        with _urq.urlopen(req) as res:
+                            html = res.read().decode('utf-8', errors='ignore')
+                            m_vid = _re.search(r'<meta[^>]*property=["\']og:video["\'][^>]*content=["\']([^"\']+)["\']', html)
+                            m_img = _re.search(r'<meta[^>]*property=["\']og:image["\'][^>]*content=["\']([^"\']+)["\']', html)
+                            media_url = m_vid.group(1) if m_vid else (m_img.group(1) if m_img else None)
+                            if media_url:
+                                ext = '.mp4' if '.mp4' in media_url else '.jpg'
+                                filename = os.path.join(TEMP_DIR, f"bot_pin_{int(_tm.time())}{ext}")
+                                _urq.urlretrieve(media_url, filename)
+                                info = {'title': 'Pinterest Media'}
+                    if not filename or not os.path.exists(filename):
+                        raise ydl_err
 
-                if os.path.exists(filename):
+                if filename and os.path.exists(filename):
                     size_mb = os.path.getsize(filename) / (1024 * 1024)
                     if size_mb <= 48:
                         bot.edit_message_text(
