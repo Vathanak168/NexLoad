@@ -268,6 +268,59 @@ def _download_image_bytes(img_url, out_path, task_id, progress_base=0, progress_
     pct = int(progress_base + ((img_idx + 1) / total_imgs) * (progress_max - progress_base))
     tasks[task_id].update({'progress': pct})
 
+def _resolve_final_download_path(ydl, info, download_dir, mode, started_at, progress_path=''):
+    """Find the final file after yt-dlp post-processing/merge."""
+    candidates = []
+
+    def add_candidate(path):
+        if not path:
+            return
+        try:
+            p = os.path.abspath(path)
+            if os.path.isfile(p) and not p.endswith(('.part', '.ytdl', '.temp')):
+                candidates.append(p)
+        except Exception:
+            pass
+
+    add_candidate(progress_path)
+
+    if info:
+        try:
+            for item in info.get('requested_downloads') or []:
+                add_candidate(item.get('filepath') or item.get('filename'))
+        except Exception:
+            pass
+        try:
+            prepared = ydl.prepare_filename(info)
+            add_candidate(prepared)
+            root, _ext = os.path.splitext(prepared)
+            if mode == 'video':
+                add_candidate(root + '.mp4')
+            elif mode == 'audio':
+                for ext in ('.m4a', '.webm', '.mp3'):
+                    add_candidate(root + ext)
+        except Exception:
+            pass
+
+    try:
+        cutoff = started_at - 5
+        for name in os.listdir(download_dir):
+            p = os.path.join(download_dir, name)
+            if os.path.isfile(p) and os.path.getmtime(p) >= cutoff:
+                add_candidate(p)
+    except Exception:
+        pass
+
+    if mode == 'video':
+        mp4s = [p for p in candidates if os.path.splitext(p)[1].lower() == '.mp4']
+        if mp4s:
+            candidates = mp4s
+
+    if not candidates:
+        return ''
+    candidates = sorted(set(candidates), key=lambda p: (os.path.getmtime(p), os.path.getsize(p)), reverse=True)
+    return candidates[0]
+
 
 
 def _is_cloud_environment():
@@ -338,6 +391,8 @@ os.makedirs(DEFAULT_DOWNLOAD_DIR, exist_ok=True)
 
 CUSTOM_FOLDER_PATH = os.path.join(_BASE_DIR, 'custom_folder.txt')
 def get_download_dir():
+    if os.environ.get('DOWNLOAD_DIR'):
+        return DEFAULT_DOWNLOAD_DIR
     if os.path.exists(CUSTOM_FOLDER_PATH):
         with open(CUSTOM_FOLDER_PATH, 'r', encoding='utf-8') as f:
             d = f.read().strip()
@@ -1101,12 +1156,30 @@ def start_download():
             if FFMPEG_PATH:
                 ydl_opts['ffmpeg_location'] = FFMPEG_PATH
 
+            download_started_at = time.time()
+            final_path = ''
             with yt_dlp.YoutubeDL(apply_cookies(ydl_opts, url)) as ydl:
-                ydl.download([url])
+                info = ydl.extract_info(url, download=True)
+                final_path = _resolve_final_download_path(
+                    ydl,
+                    info,
+                    DOWNLOAD_DIR,
+                    mode,
+                    download_started_at,
+                    tasks[task_id].get('filepath', ''),
+                )
 
             # Record stats
-            _record_download(platform=url.split('/')[2] if '/' in url else 'unknown')
-            tasks[task_id].update({'status': 'done', 'progress': 100})
+            final_size = os.path.getsize(final_path) if final_path and os.path.exists(final_path) else 0
+            _record_download(platform=url.split('/')[2] if '/' in url else 'unknown', file_size=final_size)
+            update = {'status': 'done', 'progress': 100}
+            if final_path:
+                update.update({
+                    'filepath': final_path,
+                    'filename': os.path.basename(final_path),
+                    'size': f'{final_size // 1024} KB' if final_size else tasks[task_id].get('size', ''),
+                })
+            tasks[task_id].update(update)
 
         except Exception as e:
             err_str = str(e).replace('[youtube]','').strip()
@@ -1415,7 +1488,7 @@ def _try_start_bot():
                     print(f"⚠️ [Server Boot] Thread bot failed: {ex}")
             threading.Thread(target=_run, daemon=True).start()
 
-if __name__ == '__main__' or os.environ.get("RENDER") or os.environ.get("DYNO"):
+if os.environ.get("AUTO_START_TELEGRAM_BOT", "").lower() in ("1", "true", "yes"):
     _try_start_bot()
 
 # ─────────────────────────────────────────────────────────────────
