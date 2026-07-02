@@ -316,8 +316,13 @@ else:
     if FFMPEG_PATH:
         print(f'  ✅ ffmpeg found (system): {FFMPEG_PATH}')
     else:
-        print('  ⚠️  ffmpeg NOT found — max quality: 720p')
-        print('      Run setup_ffmpeg.bat to install automatically!')
+        try:
+            import imageio_ffmpeg
+            FFMPEG_PATH = imageio_ffmpeg.get_ffmpeg_exe()
+            print(f'  ✅ ffmpeg found (imageio-ffmpeg): {FFMPEG_PATH}')
+        except Exception:
+            FFMPEG_PATH = None
+            print('  ⚠️  ffmpeg NOT found — max quality: 720p')
 
 # ── Download destination ──────────────────────────────────────────
 DEFAULT_DOWNLOAD_DIR = (
@@ -476,6 +481,8 @@ def get_info():
             'skip_download': True,
             'extract_flat': 'in_playlist',
         }, url)
+        if FFMPEG_PATH:
+            ydl_opts['ffmpeg_location'] = FFMPEG_PATH
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -936,7 +943,7 @@ def start_download():
                     ]
                     if FFMPEG_PATH:
                         for s in _info_strategies:
-                            s['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
+                            s['ffmpeg_location'] = FFMPEG_PATH
 
                     for _opts in _info_strategies:
                         try:
@@ -958,7 +965,7 @@ def start_download():
                                 'no_warnings':    True,
                             })
                             if FFMPEG_PATH:
-                                ydl_opts['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
+                                ydl_opts['ffmpeg_location'] = FFMPEG_PATH
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                 ydl.download([url])
                             tasks[task_id].update({'status': 'done', 'progress': 100})
@@ -1009,7 +1016,7 @@ def start_download():
                             'no_warnings':    True,
                         })
                         if FFMPEG_PATH:
-                            dl_opts_fallback['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
+                            dl_opts_fallback['ffmpeg_location'] = FFMPEG_PATH
                         with yt_dlp.YoutubeDL(dl_opts_fallback) as ydl:
                             ydl.download([url])
                         tasks[task_id].update({'status': 'done', 'progress': 100})
@@ -1069,7 +1076,7 @@ def start_download():
 
             # Tell yt-dlp exactly where ffmpeg is
             if FFMPEG_PATH:
-                ydl_opts['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
+                ydl_opts['ffmpeg_location'] = FFMPEG_PATH
 
             with yt_dlp.YoutubeDL(apply_cookies(ydl_opts, url)) as ydl:
                 ydl.download([url])

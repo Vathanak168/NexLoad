@@ -73,14 +73,25 @@ def register_downloader_handlers(bot):
 
         def worker():
             try:
-                import yt_dlp
+                import yt_dlp, shutil
+                ffmpeg_exe = shutil.which('ffmpeg')
+                if not ffmpeg_exe:
+                    try:
+                        import imageio_ffmpeg
+                        ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
+                    except Exception:
+                        ffmpeg_exe = None
+
                 out_tmpl = os.path.join(TEMP_DIR, f"%(id)s.%(ext)s")
+                fmt_str = 'bestvideo[ext=mp4][filesize<48M]+bestaudio[ext=m4a]/best[ext=mp4][filesize<48M]/best[filesize<48M]' if ffmpeg_exe else 'best[ext=mp4][filesize<48M]/best[filesize<48M]'
                 ydl_opts = {
                     'outtmpl': out_tmpl,
-                    'format': 'bestvideo[ext=mp4][filesize<48M]+bestaudio[ext=m4a]/best[ext=mp4][filesize<48M]/best[filesize<48M]',
+                    'format': fmt_str,
                     'quiet': True,
                     'no_warnings': True
                 }
+                if ffmpeg_exe:
+                    ydl_opts['ffmpeg_location'] = ffmpeg_exe
                 try:
                     bot.edit_message_text(
                         "⬇️ <b>Downloading media...</b>\n⚡ Extracting best quality under 50 MB.",

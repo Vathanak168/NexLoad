@@ -8,3 +8,4 @@ Pillow>=10.0.0
 pyinstaller>=6.0.0
 SQLAlchemy>=2.0.0
 psycopg2-binary>=2.9.0
+imageio-ffmpeg>=0.4.9
