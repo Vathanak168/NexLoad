@@ -1132,7 +1132,6 @@ def start_download():
                 'outtmpl':             os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
                 'progress_hooks':      [progress_hook],
                 'postprocessors':      pp,
-                'merge_output_format': 'mp4',
                 'quiet':               True,
                 'no_warnings':         True,
                 'noprogress':          False,
@@ -1155,6 +1154,7 @@ def start_download():
             # Tell yt-dlp exactly where ffmpeg is
             if FFMPEG_PATH:
                 ydl_opts['ffmpeg_location'] = FFMPEG_PATH
+                ydl_opts['merge_output_format'] = 'mp4'
 
             download_started_at = time.time()
             final_path = ''

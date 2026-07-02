@@ -252,7 +252,6 @@ def register_downloader_handlers(bot):
                     'no_warnings': True,
                     'noprogress': True,
                     'noplaylist': True,
-                    'merge_output_format': 'mp4',
                     'http_headers': {
                         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36',
                         'Accept-Language': 'en-US,en;q=0.9',
@@ -261,6 +260,7 @@ def register_downloader_handlers(bot):
                 _apply_cookies(ydl_opts)
                 if ffmpeg_exe:
                     ydl_opts['ffmpeg_location'] = ffmpeg_exe
+                    ydl_opts['merge_output_format'] = 'mp4'
                 try:
                     bot.edit_message_text(
                         "⬇️ <b>Downloading media...</b>\n⚡ Extracting best quality under 50 MB.",
