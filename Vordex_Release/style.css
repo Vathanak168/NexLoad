@@ -3231,3 +3231,624 @@ body.light-theme .aurora-blob { opacity: 0.06; }
 }
 
 
+
+/* =========================================================================
+   NEW VORDEX COMMAND CONSOLE & RESULT STAGE REDESIGN
+   ========================================================================= */
+
+:root {
+  --topbar-height: 64px;
+  --content-narrow: 720px;
+  --content-command: 860px;
+  --content-wide: 1120px;
+  --surface-0: #080a12;
+  --surface-1: #0d101a;
+  --surface-2: #151927;
+  --border-glass: rgba(255,255,255,.12);
+  --border-strong: rgba(255,255,255,.22);
+}
+
+.workspace {
+  min-height: calc(100dvh - var(--topbar-height));
+  padding: clamp(32px, 6vw, 64px) clamp(16px, 4vw, 48px);
+  display: grid;
+  grid-template-rows: auto auto auto 1fr;
+  gap: 24px;
+  max-width: var(--content-wide);
+  margin: 0 auto;
+  transition: all .35s cubic-bezier(.2,.8,.2,1);
+}
+
+.workspace[data-state="idle"] {
+  align-content: center;
+}
+
+.workspace[data-state="result"] {
+  align-content: start;
+}
+
+/* Hero Stack */
+.hero-stack {
+  display: grid;
+  gap: 16px;
+  justify-items: center;
+  text-align: center;
+  margin-bottom: 8px;
+  transition: all .35s ease;
+}
+
+.workspace[data-state="result"] .hero-stack {
+  opacity: 0.6;
+  transform: scale(0.96);
+  margin-bottom: 0;
+}
+
+.hero-title {
+  max-width: 760px;
+  font-size: clamp(34px, 5.5vw, 64px);
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: -0.04em;
+  margin: 0;
+}
+
+.hero-subtitle {
+  max-width: 620px;
+  color: var(--text-secondary);
+  font-size: clamp(15px, 2vw, 18px);
+  line-height: 1.6;
+  margin: 0;
+}
+
+/* Command Shell */
+.command-shell {
+  width: min(100%, var(--content-command));
+  margin: 0 auto;
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04)),
+    color-mix(in srgb, var(--surface-1) 88%, transparent);
+  border: 1px solid var(--border-strong);
+  box-shadow: 0 24px 80px rgba(0,0,0,.45), 0 0 0 1px rgba(139,92,246,.15);
+  backdrop-filter: blur(28px);
+  transition: all .28s ease;
+}
+
+.command-shell:focus-within {
+  border-color: #8b5cf6;
+  box-shadow: 0 24px 80px rgba(139,92,246,.25), 0 0 0 2px rgba(139,92,246,.4);
+}
+
+.command-inner {
+  display: grid;
+  grid-template-columns: 48px 1fr auto;
+  align-items: center;
+  padding: 8px 12px 8px 16px;
+  min-height: 68px;
+  gap: 12px;
+}
+
+.command-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #a855f7;
+}
+
+.command-input {
+  background: transparent;
+  border: none;
+  color: #fff;
+  font-size: 17px;
+  font-family: inherit;
+  width: 100%;
+  outline: none;
+}
+
+.command-input::placeholder {
+  color: rgba(255,255,255,.42);
+}
+
+.command-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.btn-paste, .btn-clear {
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.10);
+  color: #cbd5e1;
+  padding: 8px 14px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.btn-paste:hover, .btn-clear:hover {
+  background: rgba(255,255,255,.15);
+  color: #fff;
+}
+
+.btn-analyze {
+  background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899);
+  border: none;
+  color: #fff;
+  padding: 11px 24px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(168, 85, 247, .4);
+  transition: all .25s ease;
+}
+
+.btn-analyze:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(168, 85, 247, .6);
+}
+
+/* Contextual Platform Chips */
+.platform-context {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.platform-context .chip {
+  background: rgba(255,255,255,.05);
+  border: 1px solid rgba(255,255,255,.08);
+  color: rgba(255,255,255,.72);
+  padding: 7px 16px;
+  border-radius: 999px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.platform-context .chip:hover, .platform-context .chip.active {
+  background: rgba(139,92,246,.22);
+  border-color: rgba(139,92,246,.50);
+  color: #fff;
+}
+
+/* Result Stage */
+.result-stage {
+  width: min(100%, 1040px);
+  margin-inline: auto;
+  min-height: 10px;
+  opacity: 0;
+  transform: translateY(16px) scale(.985);
+  transition:
+    opacity .28s ease,
+    transform .32s cubic-bezier(.2,.8,.2,1);
+}
+
+.workspace[data-state="result"] .result-stage {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  min-height: 280px;
+}
+
+/* Result Card 2-Column Grid */
+.result-card {
+  display: grid;
+  grid-template-columns: 300px 1fr;
+  gap: 28px;
+  padding: 28px;
+  border-radius: 28px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.10), rgba(255,255,255,.035)),
+    color-mix(in srgb, var(--surface-1) 85%, transparent);
+  border: 1px solid var(--border-glass);
+  box-shadow: 0 24px 72px rgba(0,0,0,.35);
+  backdrop-filter: blur(28px);
+}
+
+.result-thumbnail {
+  aspect-ratio: 16 / 9;
+  border-radius: 20px;
+  overflow: hidden;
+  background: var(--surface-2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 8px 30px rgba(0,0,0,.3);
+}
+
+.result-thumbnail img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.result-content {
+  min-width: 0;
+  display: grid;
+  gap: 16px;
+  align-content: start;
+}
+
+.result-title {
+  font-size: 21px;
+  line-height: 1.35;
+  font-weight: 700;
+  color: #fff;
+  margin: 0;
+  word-break: break-word;
+}
+
+.result-meta {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.platform-tag {
+  padding: 4px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  background: rgba(139,92,246,.20);
+  color: #c4b5fd;
+  border: 1px solid rgba(139,92,246,.35);
+}
+
+.duration-tag, .author-tag {
+  font-size: 13px;
+  color: rgba(255,255,255,.65);
+}
+
+/* Native Engine Card (YouTube Redirect) */
+.native-engine-card {
+  display: grid;
+  gap: 14px;
+  padding: 20px;
+  border-radius: 20px;
+  background:
+    radial-gradient(circle at top left, rgba(139,92,246,.25), transparent 55%),
+    rgba(255,255,255,.05);
+  border: 1px solid rgba(168,85,247,.35);
+}
+
+.native-engine-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: #fff;
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.native-engine-copy {
+  color: rgba(255,255,255,.75);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.btn-primary-sm {
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  color: #fff;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .2s ease;
+}
+
+.btn-secondary-sm {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  color: #e2e8f0;
+  padding: 10px 18px;
+  border-radius: 12px;
+  font-size: 13.5px;
+  font-weight: 500;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  transition: all .2s ease;
+}
+
+/* Format Controls & Actions */
+.format-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 16px;
+  align-items: flex-end;
+  background: rgba(255,255,255,.035);
+  padding: 14px 18px;
+  border-radius: 16px;
+  border: 1px solid rgba(255,255,255,.07);
+}
+
+.format-controls .select-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 140px;
+}
+
+.format-controls label {
+  font-size: 12px;
+  color: rgba(255,255,255,.55);
+  font-weight: 500;
+}
+
+.format-select {
+  background: rgba(0,0,0,.40);
+  border: 1px solid rgba(255,255,255,.15);
+  color: #fff;
+  padding: 8px 12px;
+  border-radius: 10px;
+  font-size: 14px;
+  outline: none;
+}
+
+.result-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.btn-download-primary {
+  background: linear-gradient(135deg, #10b981, #059669);
+  color: #fff;
+  border: none;
+  padding: 13px 26px;
+  border-radius: 16px;
+  font-size: 15px;
+  font-weight: 700;
+  cursor: pointer;
+  flex: 1;
+  min-width: 180px;
+  box-shadow: 0 4px 20px rgba(16, 185, 129, .35);
+  transition: all .25s ease;
+}
+
+.btn-download-primary:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 28px rgba(16, 185, 129, .55);
+}
+
+.btn-queue-secondary {
+  background: rgba(255,255,255,.08);
+  border: 1px solid rgba(255,255,255,.15);
+  color: #fff;
+  padding: 13px 20px;
+  border-radius: 16px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+/* Mobile Action Bar */
+.mobile-action-bar {
+  display: none;
+}
+
+/* Responsive Rules (< 640px) */
+@media (max-width: 640px) {
+  .navbar .nav-tabs { display: none !important; }
+  .workspace { padding: 20px 12px 108px; gap: 18px; }
+  .command-inner { grid-template-columns: 36px 1fr; padding: 12px; }
+  .command-actions { display: none; }
+  .result-card { grid-template-columns: 1fr; padding: 18px; gap: 18px; }
+  
+  .mobile-action-bar {
+    position: fixed;
+    left: 12px;
+    right: 12px;
+    bottom: max(12px, env(safe-area-inset-bottom));
+    z-index: 60;
+    display: grid;
+    grid-template-columns: 1fr 1.4fr;
+    gap: 10px;
+    padding: 10px;
+    border-radius: 22px;
+    background: color-mix(in srgb, var(--surface-1) 92%, transparent);
+    border: 1px solid var(--border-glass);
+    backdrop-filter: blur(24px);
+    box-shadow: 0 18px 56px rgba(0,0,0,.45);
+  }
+
+  .mob-btn-paste {
+    background: rgba(255,255,255,.1);
+    border: 1px solid rgba(255,255,255,.15);
+    color: #fff;
+    padding: 12px;
+    border-radius: 14px;
+    font-weight: 600;
+  }
+
+  .mob-btn-analyze {
+    background: linear-gradient(135deg, #6366f1, #a855f7);
+    border: none;
+    color: #fff;
+    padding: 12px;
+    border-radius: 14px;
+    font-weight: 700;
+  }
+}
+
+/* =========================================================================
+   VORDEX SAAS LOGIN CARD REDESIGN (LINEAR / VERCEL STYLE)
+   ========================================================================= */
+
+.login-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 1000;
+  background: rgba(4, 6, 12, 0.85);
+  backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 20px;
+}
+
+.login-box.saas-login-card {
+  width: 100%;
+  max-width: 380px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,.08) 0%, rgba(255,255,255,.025) 100%),
+    #0b0e17;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 24px;
+  padding: 36px 32px 28px;
+  box-shadow: 0 32px 80px rgba(0,0,0,.7), 0 0 0 1px rgba(139,92,246,.15);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  animation: modalPopIn .35s cubic-bezier(.16,1,.3,1);
+}
+
+@keyframes modalPopIn {
+  from { opacity: 0; transform: translateY(16px) scale(.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.saas-login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 24px;
+}
+
+.saas-brand-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 14px;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  box-shadow: 0 8px 24px rgba(168, 85, 247, .35);
+}
+
+.saas-brand-title {
+  font-size: 17px;
+  font-weight: 700;
+  letter-spacing: 0.5px;
+  color: rgba(255,255,255,.9);
+  text-transform: uppercase;
+}
+
+.saas-login-step {
+  width: 100%;
+}
+
+.saas-step-title {
+  font-size: 24px;
+  font-weight: 700;
+  color: #fff;
+  margin: 0 0 8px 0;
+  letter-spacing: -0.5px;
+}
+
+.saas-step-sub {
+  font-size: 13.5px;
+  color: rgba(255,255,255,.55);
+  margin: 0 0 26px 0;
+  line-height: 1.5;
+}
+
+.saas-google-wrap {
+  display: flex;
+  justify-content: center;
+  min-height: 44px;
+  margin-bottom: 24px;
+}
+
+.saas-login-footer {
+  border-top: 1px solid rgba(255,255,255,.08);
+  padding-top: 18px;
+  font-size: 12px;
+  color: rgba(255,255,255,.4);
+}
+
+/* Step 2 Inputs & Buttons */
+.saas-input-group {
+  margin-bottom: 20px;
+}
+
+.saas-key-input {
+  width: 100%;
+  background: rgba(0,0,0,.45);
+  border: 1.5px solid rgba(255,255,255,.15);
+  border-radius: 14px;
+  padding: 13px 16px;
+  color: #fff;
+  font-size: 14.5px;
+  font-family: monospace;
+  letter-spacing: 1.2px;
+  text-align: center;
+  outline: none;
+  transition: all .2s ease;
+}
+
+.saas-key-input:focus {
+  border-color: #8b5cf6;
+  box-shadow: 0 0 0 3px rgba(139,92,246,.25);
+}
+
+.saas-key-input::placeholder {
+  color: rgba(255,255,255,.25);
+  letter-spacing: 0px;
+}
+
+.saas-btn-row {
+  display: flex;
+  gap: 10px;
+}
+
+.saas-btn-back {
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  color: rgba(255,255,255,.75);
+  padding: 12px 16px;
+  border-radius: 14px;
+  font-size: 13.5px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all .2s ease;
+}
+
+.saas-btn-back:hover {
+  background: rgba(255,255,255,.12);
+  color: #fff;
+}
+
+.saas-btn-primary {
+  flex: 1;
+  background: linear-gradient(135deg, #6366f1, #a855f7);
+  border: none;
+  color: #fff;
+  padding: 12px 20px;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 600;
+  cursor: pointer;
+  box-shadow: 0 4px 16px rgba(168,85,247,.35);
+  transition: all .2s ease;
+}
+
+.saas-btn-primary:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 6px 20px rgba(168,85,247,.5);
+}

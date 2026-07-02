@@ -270,6 +270,18 @@ def _download_image_bytes(img_url, out_path, task_id, progress_base=0, progress_
 
 
 
+def _is_cloud_environment():
+    if os.environ.get('RENDER') or os.environ.get('CLOUD_DEPLOY'):
+        return True
+    try:
+        if request and request.host:
+            host = request.host.lower().split(':')[0]
+            if not (host == 'localhost' or host == '127.0.0.1'):
+                return True
+    except Exception:
+        pass
+    return False
+
 app = Flask(__name__, static_folder=_BASE_DIR, static_url_path='')
 _cors_default = f'http://localhost:{PORT},http://127.0.0.1:{PORT},null'
 _allowed_origins = [o.strip() for o in os.environ.get('ALLOWED_ORIGINS', _cors_default).split(',') if o.strip()]
@@ -366,12 +378,28 @@ def get_cookies_file():
             return prepared
     return None
 
-def apply_cookies(ydl_opts):
+def apply_cookies(ydl_opts, url=""):
     try:
         os.makedirs(YTDLP_CACHE_DIR, exist_ok=True)
         ydl_opts.setdefault('cachedir', YTDLP_CACHE_DIR)
     except Exception:
         ydl_opts.setdefault('cachedir', False)
+
+    if 'youtube.com' in url.lower() or 'youtu.be' in url.lower():
+        consent_file = os.path.join(_BASE_DIR, 'youtube_consent.json')
+        if os.path.exists(consent_file):
+            try:
+                with open(consent_file, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                    if not data.get("youtube_enabled", False):
+                        raise ValueError("YouTube download is disabled in your Desktop setup config.")
+            except ValueError:
+                raise
+            except Exception:
+                pass
+        if not os.environ.get("ALLOW_YOUTUBE_COOKIES", ""):
+            return ydl_opts
+
     cf = get_cookies_file()
     if cf:
         ydl_opts['cookiefile'] = cf
@@ -423,6 +451,10 @@ def get_info():
     if not url:
         return jsonify({'error': 'URL is required'}), 400
 
+    if ('youtube.com' in url.lower() or 'youtu.be' in url.lower()) and _is_cloud_environment():
+        msg = 'YouTube download មិនអាចប្រើលើ Web បានទេ។ សូម Download NexLoad Desktop App ដើម្បីប្រើមុខងារនេះ។ [Download Desktop App]'
+        return jsonify({'error': msg, 'is_redirect': True, 'download_url': 'https://github.com/Vathanak168/NexLoad/releases'}), 400
+
     # ── Intercept Pexels before yt-dlp (which fails via Cloudflare 403) ──
     if 'pexels.com' in url.lower():
         return jsonify({
@@ -443,7 +475,7 @@ def get_info():
             'no_warnings': True,
             'skip_download': True,
             'extract_flat': 'in_playlist',
-        })
+        }, url)
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -720,6 +752,10 @@ def start_download():
 
     if not url:
         return jsonify({'error': 'URL is required'}), 400
+
+    if ('youtube.com' in url.lower() or 'youtu.be' in url.lower()) and _is_cloud_environment():
+        msg = 'YouTube download មិនអាចប្រើលើ Web បានទេ។ សូម Download NexLoad Desktop App ដើម្បីប្រើមុខងារនេះ។ [Download Desktop App]'
+        return jsonify({'error': msg, 'is_redirect': True, 'download_url': 'https://github.com/Vathanak168/NexLoad/releases'}), 400
 
     # Refresh download dir in case it was changed
     DOWNLOAD_DIR = get_download_dir()
@@ -1035,7 +1071,7 @@ def start_download():
             if FFMPEG_PATH:
                 ydl_opts['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
 
-            with yt_dlp.YoutubeDL(apply_cookies(ydl_opts)) as ydl:
+            with yt_dlp.YoutubeDL(apply_cookies(ydl_opts, url)) as ydl:
                 ydl.download([url])
 
             # Record stats

@@ -535,7 +535,31 @@ async function analyzeUrl(platform) {
     return;
   }
 
+  if ((platform === 'youtube' || url.includes('youtube.com') || url.includes('youtu.be')) &&
+      window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && window.location.protocol.startsWith('http')) {
+    const ws = document.querySelector('.workspace');
+    if (ws) ws.setAttribute('data-state', 'result');
+    result.innerHTML = `
+      <div class="native-engine-card">
+        <div class="native-engine-title">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+          ✦ Native Engine Required
+        </div>
+        <div class="native-engine-copy">
+          YouTube extraction is handled by Vordex Desktop for protected-platform compatibility, local processing, and maximum download speed. Included with your license!
+        </div>
+        <div style="display:flex; gap:12px; margin-top:4px; flex-wrap:wrap;">
+          <a href="nexload://open?url=${encodeURIComponent(url)}" class="btn-primary-sm" style="text-decoration:none;">⚡ Open Desktop App</a>
+          <a href="https://github.com/Vathanak168/NexLoad/releases" target="_blank" class="btn-secondary-sm" style="text-decoration:none;">📥 Install Desktop App</a>
+        </div>
+      </div>
+    `;
+    return;
+  }
+
   // Show skeleton + disable button
+  const ws = document.querySelector('.workspace');
+  if (ws) ws.setAttribute('data-state', 'result');
   btn.textContent = t('analyzing');
   btn.classList.add('loading');
   result.innerHTML = buildSkeleton();
@@ -548,6 +572,26 @@ async function analyzeUrl(platform) {
     const data = await res.json();
 
     if (!res.ok || data.error) {
+      if (data.is_redirect && data.download_url) {
+        if (ws) ws.setAttribute('data-state', 'result');
+        result.innerHTML = `
+          <div class="native-engine-card">
+            <div class="native-engine-title">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+              ✦ Native Engine Required
+            </div>
+            <div class="native-engine-copy">
+              ${data.error || 'Protected platform extraction requires Vordex Desktop.'}
+            </div>
+            <div style="display:flex; gap:12px; margin-top:4px; flex-wrap:wrap;">
+              <a href="${data.download_url}" target="_blank" class="btn-primary-sm" style="text-decoration:none;">📥 Download Desktop App</a>
+            </div>
+          </div>
+        `;
+        btn.textContent = t('analyze');
+        btn.classList.remove('loading');
+        return;
+      }
       throw new Error(data.error || `HTTP ${res.status}`);
     }
 
@@ -687,7 +731,7 @@ function buildResultCard(platform, url, info) {
   }
 
   return `
-    <div class="video-result-card" id="${cardId}"
+    <div class="video-result-card result-card" id="${cardId}"
       data-url="${escapeHtml(url)}"
       data-platform="${platform}"
       data-quality="${defaultH}"

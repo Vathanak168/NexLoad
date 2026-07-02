@@ -44,7 +44,15 @@ def run_bot():
 
     # ── Register Menu Commands ────────────────────────────────────
     try:
-        commands = [
+        public_commands = [
+            BotCommand("start", "🏠 Main Menu"),
+            BotCommand("getkey", "🆓 Get Free Trial Key"),
+            BotCommand("mykey", "📋 Check My Key Status"),
+            BotCommand("help", "❓ Help & Commands"),
+        ]
+        bot.set_my_commands(public_commands)
+
+        admin_commands = [
             BotCommand("start", "🏠 Open Admin Control Panel"),
             BotCommand("admin", "🔑 Key Management Panel"),
             BotCommand("genkey", "➕ Generate License Key (Admin)"),
@@ -54,8 +62,13 @@ def run_bot():
             BotCommand("revoke", "🚫 Revoke a License Key (Admin)"),
             BotCommand("help", "❓ Help & Commands"),
         ]
-        bot.set_my_commands(commands)
-        print("✅ [Telegram Bot] Command menu registered!")
+        for aid in config.TELEGRAM_ADMIN_IDS:
+            try:
+                from telebot.types import BotCommandScopeChat
+                bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(int(aid)))
+            except Exception as ex_scope:
+                pass
+        print("✅ [Telegram Bot] Scoped command menus registered!")
     except Exception as e:
         print(f"⚠️ [Telegram Bot] Could not set menu commands: {e}")
 

@@ -120,8 +120,60 @@ def show_tray_fallback():
         pass
 
 
+def check_and_run_first_run_consent(app_dir):
+    import json
+    consent_file = os.path.join(app_dir, 'youtube_consent.json')
+    if os.path.exists(consent_file):
+        return
+
+    try:
+        import tkinter as tk
+        root = tk.Tk()
+        root.title("NexLoad Desktop — First Run Setup")
+        root.geometry("540x360")
+        root.resizable(False, False)
+
+        frame = tk.Frame(root, padx=24, pady=20)
+        frame.pack(fill="both", expand=True)
+
+        lbl_title = tk.Label(frame, text="Welcome to NexLoad Desktop", font=("Arial", 14, "bold"), anchor="w")
+        lbl_title.pack(fill="x", pady=(0, 10))
+
+        lbl_sub = tk.Label(frame, text="Please configure your local video extraction components below before launching.", font=("Arial", 10), wraplength=480, justify="left", anchor="w")
+        lbl_sub.pack(fill="x", pady=(0, 15))
+
+        var_yt = tk.BooleanVar(value=False)
+        chk_yt = tk.Checkbutton(frame, text="Enable YouTube Download (optional) — this installs a local component that runs on your computer to download YouTube videos directly using your own internet connection.", variable=var_yt, font=("Arial", 9, "bold"), wraplength=460, justify="left")
+        chk_yt.pack(fill="x", pady=(0, 15))
+
+        lbl_info = tk.Label(frame, text="Why is this needed?\nYouTube blocks cloud servers. To download YouTube videos reliably, the extraction engine (yt-dlp + ffmpeg) must run directly on your personal computer using your home internet connection. No personal account cookies are used without explicit permission.", font=("Arial", 8), fg="#555555", wraplength=480, justify="left", bg="#f5f5f5", padx=10, pady=8)
+        lbl_info.pack(fill="x", pady=(0, 20))
+
+        def on_continue():
+            data = {"youtube_enabled": bool(var_yt.get()), "timestamp": time.time()}
+            try:
+                with open(consent_file, "w", encoding="utf-8") as f:
+                    json.dump(data, f, indent=2)
+            except Exception:
+                pass
+            root.destroy()
+
+        btn_launch = tk.Button(frame, text="Continue & Launch NexLoad", command=on_continue, bg="#0078D7", fg="white", font=("Arial", 10, "bold"), padx=15, pady=6)
+        btn_launch.pack(side="right")
+
+        root.protocol("WM_DELETE_WINDOW", on_continue)
+        root.mainloop()
+    except Exception:
+        try:
+            with open(consent_file, "w", encoding="utf-8") as f:
+                json.dump({"youtube_enabled": False, "timestamp": time.time()}, f, indent=2)
+        except Exception:
+            pass
+
+
 # ── MAIN ──────────────────────────────────────────────────────
 if __name__ == '__main__':
+    check_and_run_first_run_consent(BASE)
     if is_server_running():
         # Server already running — just open a new window
         open_app_window()
