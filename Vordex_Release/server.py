@@ -1061,7 +1061,10 @@ def auth_google():
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/auth/validate', methods=['POST'])
 def auth_validate():
-    data = request.get_json() or {}
+    try:
+        data = request.get_json(silent=True) or {}
+    except Exception:
+        data = {}
     key  = data.get('key', '').strip().upper()
     email = data.get('email', '').strip()
     
