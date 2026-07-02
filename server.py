@@ -15,6 +15,7 @@ from flask import Flask, request, jsonify, Response
 from flask_cors import CORS
 import yt_dlp
 import requests
+import db
 
 try:
     import config
@@ -25,6 +26,8 @@ except ImportError:
     HOST = os.environ.get("HOST", "0.0.0.0")
     PORT = int(os.environ.get("PORT", 5000))
     SECRET_KEY = b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique"
+if isinstance(SECRET_KEY, str):
+    SECRET_KEY = SECRET_KEY.encode()
 
 # ── HWID & Validation config ──────────────────────────────────────
 ADMIN_SERVER_URL = os.environ.get("ADMIN_SERVER_URL", "http://127.0.0.1:5050")
@@ -39,23 +42,28 @@ LICENSE_DB_PATH = os.path.join(_BASE_DIR, 'licenses.json')
 STATS_PATH      = os.path.join(_BASE_DIR, 'stats.json')
 
 def _validate_license(full_key: str) -> dict:
-    """Validate license locally using licenses.json"""
+    """Validate license using SQL Database"""
     hwid = get_hwid()
     
     if not full_key:
         return {'valid': False, 'reason': 'Key missing. Please enter your license.', 'hwid': hwid}
         
     try:
-        if not os.path.exists(LICENSE_DB_PATH):
-            return {'valid': False, 'reason': 'License database not found.', 'hwid': hwid}
-            
-        with open(LICENSE_DB_PATH, "r", encoding="utf-8") as f:
-            db = json.load(f)
-            
-        if full_key not in db:
+        rec = db.get_license(full_key)
+        if not rec:
+            # Fallback check JSON file just in case
+            if os.path.exists(LICENSE_DB_PATH):
+                try:
+                    with open(LICENSE_DB_PATH, "r", encoding="utf-8") as f:
+                        jdb = json.load(f)
+                    if full_key in jdb:
+                        rec = jdb[full_key]
+                        db.save_license(rec)
+                except Exception:
+                    pass
+                    
+        if not rec:
             return {'valid': False, 'reason': 'Key not found in system', 'hwid': hwid}
-            
-        rec = db[full_key]
         
         if not rec.get('active'):
             return {'valid': False, 'reason': 'Key has been revoked or banned', 'hwid': hwid}
@@ -65,7 +73,6 @@ def _validate_license(full_key: str) -> dict:
             return {'valid': False, 'reason': 'Device Mismatch! This key belongs to another PC.', 'hwid': hwid}
             
         # Verify Cryptographic Signature
-        SECRET_KEY = b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique"
         sig16 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:16].upper()
         sig4 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:4].upper()
         sig6 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:6].upper()
@@ -74,6 +81,8 @@ def _validate_license(full_key: str) -> dict:
             return {'valid': False, 'reason': 'Key Signature Invalid (Tampered)', 'hwid': hwid}
             
         expire_dt = datetime.datetime.fromisoformat(rec['expires'])
+        if expire_dt.tzinfo is None:
+            expire_dt = expire_dt.replace(tzinfo=datetime.timezone.utc)
         now = datetime.datetime.now(datetime.timezone.utc)
         days_left = (expire_dt - now).days
         
@@ -105,14 +114,10 @@ def _validate_license(full_key: str) -> dict:
 
 # ── Stats tracking ────────────────────────────────────────────────
 def _load_stats():
-    if os.path.exists(STATS_PATH):
-        with open(STATS_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {'total_downloads': 0, 'total_bytes': 0, 'by_platform': {}, 'by_day': {}}
+    return db.load_stats()
 
 def _save_stats(stats):
-    with open(STATS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(stats, f, indent=2)
+    db.save_stats(stats)
 
 def _record_download(platform='unknown', file_size=0):
     try:

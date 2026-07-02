@@ -14,9 +14,19 @@ Usage:
 
 import hmac, hashlib, json, os, argparse, uuid, datetime, sys
 
+try:
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
+except Exception:
+    pass
+
+import config
+import db
+
 # ── SECRET KEY — CHANGE THIS TO SOMETHING ONLY YOU KNOW ──────────
-# Keep this secret! Anyone with this key can generate valid licenses.
-SECRET_KEY = b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique"
+SECRET_KEY = getattr(config, "SECRET_KEY", b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique")
+if isinstance(SECRET_KEY, str):
+    SECRET_KEY = SECRET_KEY.encode()
 
 LICENSE_DB = os.path.join(os.path.dirname(os.path.abspath(__file__)), "licenses.json")
 
@@ -29,15 +39,27 @@ TIERS = {
 
 
 def _load_db():
-    if os.path.exists(LICENSE_DB):
-        with open(LICENSE_DB, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    try:
+        return db.load_all_licenses()
+    except Exception:
+        if os.path.exists(LICENSE_DB):
+            with open(LICENSE_DB, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {}
 
 
-def _save_db(db):
-    with open(LICENSE_DB, "w", encoding="utf-8") as f:
-        json.dump(db, f, indent=2, ensure_ascii=False)
+def _save_db(data):
+    try:
+        for k, v in data.items():
+            db.save_license(v)
+    except Exception as e:
+        print(f"⚠️ [SQL DB] Save note: {e}")
+    # Also backup to JSON for backward compatibility
+    try:
+        with open(LICENSE_DB, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 
 def _make_signature(key_body: str) -> str:
@@ -108,6 +130,8 @@ def validate_key(full_key: str) -> dict:
 
     # Check expiry
     expire_dt = datetime.datetime.fromisoformat(record["expires"])
+    if expire_dt.tzinfo is None:
+        expire_dt = expire_dt.replace(tzinfo=datetime.timezone.utc)
     now = datetime.datetime.now(datetime.timezone.utc)
     days_left = (expire_dt - now).days
 
@@ -147,6 +171,8 @@ def list_keys():
     print("─" * 110)
     for key, rec in db.items():
         expire = datetime.datetime.fromisoformat(rec["expires"])
+        if expire.tzinfo is None:
+            expire = expire.replace(tzinfo=datetime.timezone.utc)
         days_left = (expire - now).days
         status = "REVOKED" if not rec["active"] else ("EXPIRED" if days_left < 0 else f"{days_left}d left")
         print(f"{key:<45} {rec.get('user','?'):<20} {rec['tier']:<10} {expire.date()!s:<12} {status}")
@@ -179,7 +205,7 @@ def main():
     if args.cmd == "generate":
         info = generate_key(args.user, args.tier, args.days)
         print("\n" + "═" * 60)
-        print(f"  ✅ License Key Generated!")
+        print(f"  [OK] License Key Generated!")
         print("═" * 60)
         print(f"  Key:      {info['key']}")
         print(f"  User:     {info['user']}")
@@ -187,21 +213,21 @@ def main():
         print(f"  Duration: {info['days']} days")
         print(f"  Expires:  {info['expires'][:10]}")
         print("═" * 60)
-        print(f"\n  📋 Send this key to the customer:\n  {info['key']}\n")
+        print(f"\n  [COPY] Send this key to the customer:\n  {info['key']}\n")
 
     elif args.cmd == "validate":
         result = validate_key(args.key)
         if result["valid"]:
-            print(f"\n  ✅ VALID — {result['tier_label']} | User: {result['user']}")
+            print(f"\n  [VALID] — {result['tier_label']} | User: {result['user']}")
             print(f"     Expires: {result['expires'][:10]} ({result['days_left']} days left)")
         else:
-            print(f"\n  ❌ INVALID — {result['reason']}")
+            print(f"\n  [INVALID] — {result['reason']}")
 
     elif args.cmd == "revoke":
         if revoke_key(args.key):
-            print(f"  ✅ Key revoked: {args.key}")
+            print(f"  [OK] Key revoked: {args.key}")
         else:
-            print(f"  ❌ Key not found: {args.key}")
+            print(f"  [INVALID] Key not found: {args.key}")
 
     elif args.cmd == "list":
         list_keys()

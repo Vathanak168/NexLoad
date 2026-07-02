@@ -24,6 +24,7 @@ _secret_env = os.environ.get("SECRET_KEY", "NexLoad-Secret-2026-ChangeThis-To-So
 SECRET_KEY = _secret_env.encode() if isinstance(_secret_env, str) else _secret_env
 
 # Database Paths
+DATABASE_URL = os.environ.get("DATABASE_URL", "")
 LICENSE_DB_PATH = os.path.join(BASE_DIR, "licenses.json")
 STATS_PATH = os.path.join(BASE_DIR, "stats.json")
 
