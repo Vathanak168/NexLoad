@@ -5,19 +5,34 @@ Supports: YouTube, TikTok, Instagram, Facebook, Pinterest, Twitter/X, 1000+ more
 Features: License auth, stats, custom folder, subtitles, speed limiter
 """
 
-import os, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime
+import os, sys, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime
 try:
-    from dotenv import load_dotenv
-    load_dotenv()
+    sys.stdout.reconfigure(encoding='utf-8')
+    sys.stderr.reconfigure(encoding='utf-8')
 except Exception:
     pass
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_file
 from flask_cors import CORS
 import yt_dlp
 import requests
+import db
+
+try:
+    import config
+    HOST = config.HOST
+    PORT = config.PORT
+    SECRET_KEY = config.SECRET_KEY
+    GOOGLE_CLIENT_ID = getattr(config, 'GOOGLE_CLIENT_ID', '') or os.environ.get("GOOGLE_CLIENT_ID", "")
+except ImportError:
+    HOST = os.environ.get("HOST", "0.0.0.0")
+    PORT = int(os.environ.get("PORT", 5000))
+    SECRET_KEY = b"NexLoad-Secret-2026-ChangeThis-To-Something-Unique"
+    GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "")
+if isinstance(SECRET_KEY, str):
+    SECRET_KEY = SECRET_KEY.encode()
 
 # ── HWID & Validation config ──────────────────────────────────────
-ADMIN_SERVER_URL = "http://127.0.0.1:5050"
+ADMIN_SERVER_URL = os.environ.get("ADMIN_SERVER_URL", "http://127.0.0.1:5050")
 
 def get_hwid():
     """Generate a unique Machine ID based on MAC address"""
@@ -29,32 +44,95 @@ LICENSE_DB_PATH = os.path.join(_BASE_DIR, 'licenses.json')
 STATS_PATH      = os.path.join(_BASE_DIR, 'stats.json')
 
 def _validate_license(full_key: str, email: str = None) -> dict:
-    """Connect to Validation Server to check key & Gmail binding"""
+    """Validate license using SQL Database with Gmail account binding"""
+    hwid = get_hwid()
+    
     if not full_key:
         return {'valid': False, 'reason': 'Key missing. Please enter your license.'}
         
     try:
-        resp = requests.post(
-            f"{ADMIN_SERVER_URL}/api/auth/validate",
-            json={"key": full_key, "email": email},
-            timeout=8
-        )
-        if resp.status_code == 200:
-            return resp.json()
-        return {'valid': False, 'reason': 'Server returned an error.'}
+        rec = db.get_license(full_key)
+        if not rec:
+            if os.path.exists(LICENSE_DB_PATH):
+                try:
+                    with open(LICENSE_DB_PATH, "r", encoding="utf-8") as f:
+                        jdb = json.load(f)
+                    if full_key in jdb:
+                        rec = jdb[full_key]
+                        db.save_license(rec)
+                except Exception:
+                    pass
+                    
+        if not rec:
+            return {'valid': False, 'reason': 'Key not found in system'}
+        
+        if not rec.get('active'):
+            return {'valid': False, 'reason': 'Key has been revoked or banned'}
+            
+        # Check Gmail Cloud Binding (Replacing legacy HWID Lock)
+        bound_email = rec.get('bound_email')
+        if email:
+            email_clean = email.strip().lower()
+            if not bound_email:
+                # First activation auto-binding!
+                db.bind_license_email(full_key, email_clean)
+                bound_email = email_clean
+                rec['bound_email'] = email_clean
+            elif bound_email.lower() != email_clean:
+                parts = bound_email.split('@')
+                masked = (parts[0][:2] + '***@' + parts[1]) if len(parts) == 2 else 'another Gmail account'
+                return {'valid': False, 'reason': f'Key is registered to {masked}. Please log in with that Gmail account.', 'bound_email': masked}
+        elif bound_email:
+            parts = bound_email.split('@')
+            masked = (parts[0][:2] + '***@' + parts[1]) if len(parts) == 2 else 'another Gmail account'
+            return {'valid': False, 'reason': f'Please enter your registered Gmail account ({masked}) to use this key.', 'bound_email': masked}
+            
+        # Verify Cryptographic Signature
+        sig16 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:16].upper()
+        sig4 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:4].upper()
+        sig6 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:6].upper()
+        
+        if rec.get('signature') not in [sig16, sig6, sig4]:
+            return {'valid': False, 'reason': 'Key Signature Invalid (Tampered)'}
+            
+        expire_dt = datetime.datetime.fromisoformat(rec['expires'])
+        if expire_dt.tzinfo is None:
+            expire_dt = expire_dt.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        days_left = (expire_dt - now).days
+        
+        if days_left < 0:
+            return {'valid': False, 'reason': f'Key expired {-days_left} days ago'}
+            
+        TIERS = {
+            "trial":    {"label": "Trial"},
+            "basic":    {"label": "Basic"},
+            "pro":      {"label": "Pro"},
+            "lifetime": {"label": "Lifetime"},
+        }
+            
+        return {
+            'valid':       True,
+            'reason':      'OK',
+            'key':         full_key,
+            'bound_email': bound_email,
+            'tier':        rec['tier'],
+            'tier_label':  TIERS.get(rec['tier'], {}).get('label', rec['tier']),
+            'user':        rec.get('user', 'Unknown'),
+            'expires':     rec['expires'],
+            'days_left':   days_left,
+            'daily_limit': rec.get('daily_limit', 0),
+            'batch':       rec.get('batch', True),
+        }
     except Exception as e:
-        return {'valid': False, 'reason': 'Cannot connect to Server. Ensure Internet is on.'}
+        return {'valid': False, 'reason': f'Validation Error: {str(e)}'}
 
 # ── Stats tracking ────────────────────────────────────────────────
 def _load_stats():
-    if os.path.exists(STATS_PATH):
-        with open(STATS_PATH, 'r', encoding='utf-8') as f:
-            return json.load(f)
-    return {'total_downloads': 0, 'total_bytes': 0, 'by_platform': {}, 'by_day': {}}
+    return db.load_stats()
 
 def _save_stats(stats):
-    with open(STATS_PATH, 'w', encoding='utf-8') as f:
-        json.dump(stats, f, indent=2)
+    db.save_stats(stats)
 
 def _record_download(platform='unknown', file_size=0):
     try:
@@ -252,6 +330,7 @@ def get_info():
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
+            'extract_flat': 'in_playlist',
         }
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
@@ -287,6 +366,17 @@ def get_info():
             fmt_list = [{'label': f'{best}p (Best Available)', 'height': best, 'best_only': True}]
         else:
             fmt_list = []
+            
+        # ── Playlist / Profile Support ──
+        is_playlist = False
+        playlist_count = 0
+        if info.get('_type') in ['playlist', 'multi_video']:
+            is_playlist = True
+            entries = info.get('entries') or []
+            # some extractors return generator, try to count if it's a list
+            playlist_count = len(list(entries)) if isinstance(entries, list) else info.get('playlist_count', 0)
+            if not fmt_list:
+                fmt_list = [{'label': f'Download All Videos (Best Quality)', 'height': '1080', 'best_only': True}]
 
         # Duration string
         dur = info.get('duration')
@@ -310,6 +400,8 @@ def get_info():
             'webpage_url': info.get('webpage_url', url),
             'formats':    fmt_list,
             'max_height': max_height,   # 🆕 for frontend MAX badge
+            'is_playlist': is_playlist,
+            'playlist_count': playlist_count,
         })
 
     except yt_dlp.utils.DownloadError as e:
@@ -879,27 +971,70 @@ def ping():
         'ok': True,
         'dir': get_download_dir(),
         'version': '4.0',
-        'google_client_id': os.environ.get('GOOGLE_CLIENT_ID', '')
+        'google_client_id': GOOGLE_CLIENT_ID or os.environ.get('GOOGLE_CLIENT_ID', '')
     })
 
 
 # ─────────────────────────────────────────────────────────────────
-# ROUTE: POST /api/auth/google  -  Sign-In with Google & Auto Single Sign-On proxy
+# ROUTE: POST /api/auth/google  -  Sign-In with Google & Auto Single Sign-On
+# Body: { token: "google_id_token", email: "user@gmail.com" }
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/auth/google', methods=['POST'])
 def auth_google():
     data = request.get_json() or {}
-    try:
-        resp = requests.post(
-            f"{ADMIN_SERVER_URL}/api/auth/google",
-            json=data,
-            timeout=8
-        )
-        if resp.status_code == 200:
-            return jsonify(resp.json())
-        return jsonify(resp.json() if resp.text else {'valid': False, 'reason': 'Error'}), resp.status_code
-    except Exception as e:
-        return jsonify({'valid': False, 'reason': 'Cannot connect to Server.'}), 500
+    token = data.get('token', '').strip()
+    email = data.get('email', '').strip().lower()
+    
+    # 1. If Google ID Token provided, verify with Google servers
+    if token:
+        try:
+            resp = requests.get(f'https://oauth2.googleapis.com/tokeninfo?id_token={token}', timeout=6)
+            if resp.status_code == 200:
+                gdata = resp.json()
+                if str(gdata.get('email_verified', '')).lower() == 'true':
+                    email = gdata.get('email', '').lower()
+        except Exception as e:
+            print(f"[Google Auth] Token verification failed: {e}")
+            
+    if not email or '@' not in email:
+        return jsonify({'valid': False, 'reason': 'Invalid or unverified Google email address'}), 400
+        
+    # 2. Check if this verified Gmail already owns an active license in SQL Database
+    rec = db.get_license_by_email(email)
+    if rec:
+        expire_dt = datetime.datetime.fromisoformat(rec['expires'])
+        if expire_dt.tzinfo is None:
+            expire_dt = expire_dt.replace(tzinfo=datetime.timezone.utc)
+        now = datetime.datetime.now(datetime.timezone.utc)
+        days_left = (expire_dt - now).days
+        if days_left >= 0:
+            TIERS = {
+                "trial":    {"label": "Trial"},
+                "basic":    {"label": "Basic"},
+                "pro":      {"label": "Pro"},
+                "lifetime": {"label": "Lifetime"},
+            }
+            return jsonify({
+                'valid': True,
+                'auto_login': True,
+                'key': rec['key'],
+                'bound_email': email,
+                'tier': rec['tier'],
+                'tier_label': TIERS.get(rec['tier'], {}).get('label', rec['tier']),
+                'user': rec.get('user', 'Unknown'),
+                'expires': rec['expires'],
+                'days_left': days_left,
+                'daily_limit': rec.get('daily_limit', 0),
+                'batch': rec.get('batch', True),
+            })
+            
+    # 3. No active license found -> prompt UI to ask for license key to bind
+    return jsonify({
+        'valid': False,
+        'needs_key': True,
+        'email': email,
+        'reason': f'No active license found for {email}. Please enter your License Key to activate Pro access.'
+    })
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -977,11 +1112,55 @@ def open_folder():
 
 
 # ─────────────────────────────────────────────────────────────────
+# ROUTE: GET /api/file/<task_id> — Serve downloaded file to web/mobile clients
+# ─────────────────────────────────────────────────────────────────
+@app.route('/api/file/<task_id>')
+def serve_downloaded_file(task_id):
+    task = tasks.get(task_id)
+    if not task or task.get('status') != 'done':
+        return jsonify({'error': 'File not ready or not found'}), 404
+    filepath = task.get('filepath', '')
+    if not filepath or not os.path.exists(filepath):
+        fname = task.get('filename', '')
+        if fname:
+            cand = os.path.join(DOWNLOAD_DIR, fname)
+            if os.path.exists(cand):
+                filepath = cand
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'File deleted or moved from server'}), 404
+    return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
+
+
+# ─────────────────────────────────────────────────────────────────
+# AUTO-START TELEGRAM BOT (Works in Python, Gunicorn & Docker)
+# ─────────────────────────────────────────────────────────────────
+def _try_start_bot():
+    token = (os.environ.get('TELEGRAM_BOT_TOKEN') or getattr(config, 'TELEGRAM_BOT_TOKEN', '')).strip().strip('"').strip("'")
+    if token and token != "123456789:ABCdefGHIjklMNOpqrsTUVwxyz":
+        import subprocess
+        try:
+            bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "telegram_bot.py")
+            print(f"🤖 [Server Boot] Launching standalone Telegram Bot process...")
+            subprocess.Popen([sys.executable, bot_path])
+        except Exception as e:
+            print(f"⚠️ [Server Boot] Subprocess launch failed ({e}), falling back to thread...")
+            import threading
+            def _run():
+                try:
+                    import telegram_bot
+                    telegram_bot.run_bot()
+                except Exception as ex:
+                    print(f"⚠️ [Server Boot] Thread bot failed: {ex}")
+            threading.Thread(target=_run, daemon=True).start()
+
+if __name__ == '__main__' or os.environ.get("RENDER") or os.environ.get("DYNO"):
+    _try_start_bot()
+
+# ─────────────────────────────────────────────────────────────────
 # STARTUP
 # ─────────────────────────────────────────────────────────────────
 if __name__ == '__main__':
     import socket
-    # Get local IP for display
     try:
         s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         s.connect(('8.8.8.8', 80))
@@ -991,13 +1170,10 @@ if __name__ == '__main__':
         local_ip = 'YOUR_PC_IP'
 
     print('\n' + '═' * 50)
-    print('  🚀  NexLoad Server v4.0 — Commercial Edition')
+    print('  🚀  NexLoad Server v4.5 — Commercial & Cloud Edition')
     print('═' * 50)
     print(f'  📁  Downloads → {DOWNLOAD_DIR}')
-    print(f'  💻  This PC    → http://localhost:5000')
-    print(f'  📱  Other devices (same WiFi):')
-    print(f'      → http://{local_ip}:5000')
-    print('  (Open index.html from other device via this IP)')
+    print(f'  💻  Local URL  → http://localhost:{PORT}')
+    print(f'  🌐  Host Binding → {HOST}:{PORT}')
     print('═' * 50 + '\n')
-    # 0.0.0.0 = accept connections from ALL devices on network
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host=HOST, port=PORT, debug=False, threaded=True)

@@ -3,7 +3,9 @@
    Real Download via local Python + yt-dlp
    ======================================== */
 
-const API = 'http://localhost:5000/api';
+const API = (window.location.protocol.startsWith('http'))
+  ? `${window.location.origin}/api`
+  : 'http://localhost:5000/api';
 
 // ============================================================
 // STATE
@@ -145,12 +147,10 @@ const platformColors = { youtube: '#ff0033', tiktok: '#00f0ea', facebook: '#1877
 // ============================================================
 // SERVER STATUS CHECK
 // ============================================================
-async function checkServer() {
-  try {
 let googleSdkInitialized = false;
 async function checkServer() {
   try {
-    const res = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(2000) });
+    const res = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(10000) });
     const d = await res.json();
     setServerStatus(d.ok === true);
     if (d.dir) state.downloadDir = d.dir;
@@ -255,7 +255,6 @@ async function submitLicense() {
   const input = document.getElementById('licenseKeyInput');
   const errorEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
-  const statusEl = document.getElementById('loginStatus');
   const key = (input?.value || '').trim().toUpperCase();
   const email = window.verifiedSSOEmail || state.licenseEmail || '';
 
@@ -272,12 +271,8 @@ async function submitLicense() {
   btn.textContent = 'Validating...';
   if (errorEl) errorEl.textContent = '';
 
-  // If server not online, check server first
   if (!state.serverOnline) {
-    if (statusEl) statusEl.textContent = '⚠️ Start server.py first, then try again.';
-    btn.disabled = false;
-    btn.textContent = 'Activate & Enter';
-    return;
+    await checkServer();
   }
 
   try {
@@ -325,7 +320,6 @@ async function checkCachedLicense() {
   // Wait for server to be online
   await checkServer();
   if (!state.serverOnline) {
-    // If server offline, allow app to open (offline grace)
     hideLicenseOverlay();
     showToast('⚠️ Running in offline mode. Connect server to validate license.', 'info');
     return true;
@@ -374,7 +368,6 @@ async function checkCachedLicense() {
     if (errEl) errEl.textContent = '❌ ' + (data.reason || 'License verification failed');
     return false;
   } catch {
-    // Server error — allow offline grace
     hideLicenseOverlay();
     return false;
   }
@@ -417,7 +410,11 @@ function logout() {
 
 // Ensure HWID is fetched when app opens if there's no cached license
 setTimeout(() => {
-  if (!state.licenseKey) submitLicense();
+  if (state.licenseKey) {
+    checkCachedLicense();
+  } else {
+    submitLicense();
+  }
 }, 1000);
 
 // Enter key on license input
@@ -575,6 +572,8 @@ async function analyzeUrl(platform) {
       } else {
         showToast('📷 Image post detected! Click Download to save image.', 'success');
       }
+    } else if (data.is_playlist) {
+      showToast(`📋 Playlist / Profile Selected: ${data.playlist_count} items ready.`, 'success');
     } else {
       showToast('✅ Video info loaded!', 'success');
     }
@@ -604,6 +603,8 @@ function buildResultCard(platform, url, info) {
   const imageCapablePlatforms = ['instagram', 'pinterest', 'tiktok', 'facebook', 'universal'];
   const supportsImage = imageCapablePlatforms.includes(platform);
   const isImagePost = !!(info?.isImagePost);
+  const isPlaylist = !!(info?.is_playlist);
+  const playCount = info?.playlist_count || 0;
 
   // ── Quality setup ──────────────────────────────────────────────
   const fmts = info?.formats || [];
@@ -641,14 +642,18 @@ function buildResultCard(platform, url, info) {
       : ''
   ].join('');
 
-  // Image post notice banner — enhanced for slideshows
+  // Image/Playlist notice banner
   let imageNoticeBanner = '';
-  if (isImagePost) {
+  if (isPlaylist) {
+    imageNoticeBanner = `<div class="image-post-notice" style="background:rgba(56,189,248,0.1);color:#38bdf8;border:1px solid rgba(56,189,248,0.2)">
+      📋 <strong>Playlist / Account Profile Detected</strong> &mdash; <strong>${playCount} items</strong> will be downloaded. This might take a while!
+    </div>`;
+  } else if (isImagePost) {
     const imgInfo = info?.imageInfo;
     const slideCount = imgInfo?.count;
     const isSlideshow = imgInfo?.type === 'slideshow' && slideCount > 0;
     imageNoticeBanner = isSlideshow
-      ? `<div class="image-post-notice">&#128247; TikTok Slideshow &mdash; <strong>${slideCount} images</strong> will be downloaded to Downloads/NexLoad/</div>`
+      ? `<div class="image-post-notice">&#128247; TikTok Slideshow &mdash; <strong>${slideCount} images</strong> will be downloaded to Downloads/Vordex/</div>`
       : `<div class="image-post-notice">&#128247; Image post detected &mdash; quality bar not applicable. Click <strong>Download Image</strong> below.</div>`;
   }
 
@@ -662,9 +667,12 @@ function buildResultCard(platform, url, info) {
   const viewsTag = info?.views    ? `<span class="result-tag">&#128065; ${escapeHtml(info.views)}</span>`   : '';
 
   // Initial download button label — shows selected quality
-  const initDlLabel = isImagePost
-    ? `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Download Image`
-    : `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg> Download ${firstQualityLabel}`;
+  let initDlLabel = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg> Download ${firstQualityLabel}`;
+  if (isPlaylist) {
+    initDlLabel = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/><line x1="19" y1="5" x2="19" y2="19"/></svg> Download All (${playCount})`;
+  } else if (isImagePost) {
+    initDlLabel = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"/><circle cx="8.5" cy="8.5" r="1.5"/><polyline points="21 15 16 10 5 21"/></svg> Download Image`;
+  }
 
   return `
     <div class="video-result-card" id="${cardId}"
@@ -795,8 +803,11 @@ function selectQuality(btn, cardId) {
       dlBtn.style.background  = 'linear-gradient(135deg,#f59e0b,#d97706)';
       dlBtn.style.boxShadow   = '0 4px 24px rgba(245,158,11,0.3)';
     } else {
-      // Video — show quality label: "Download 4K", "Download 1080p", etc.
-      dlBtn.innerHTML = `${dlSvg} Download ${shortLabel}`;
+      if (shortLabel.includes('Download All')) {
+        dlBtn.innerHTML = `${dlSvg} ${shortLabel}`;
+      } else {
+        dlBtn.innerHTML = `${dlSvg} Download ${shortLabel}`;
+      }
       dlBtn.style.background  = '';
       dlBtn.style.boxShadow   = '';
     }
@@ -980,7 +991,24 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
         if (meta) meta.textContent = '';
         setTimeout(() => {
           if (progWrap) progWrap.classList.remove('visible');
-          if (doneLine) doneLine.style.display = 'flex';
+          if (doneLine) {
+            doneLine.style.display = 'flex';
+            doneLine.style.flexWrap = 'wrap';
+            doneLine.style.gap = '8px';
+            const fn = escapeHtml(task.filename || 'video.mp4');
+            doneLine.innerHTML = `
+              <div style="width:100%;font-weight:700;color:#10b981;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                ✅ Complete: <span style="color:#f8fafc;font-weight:600">${fn}</span>
+              </div>
+              <a href="${API}/file/${task_id}" class="open-folder-btn" download style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:var(--grad-mid);color:#fff;font-weight:600">
+                📥 Download File
+              </a>
+              <button class="open-folder-btn" onclick="shareOrSaveToPhotos('${API}/file/${task_id}', '${fn}')" style="display:inline-flex;align-items:center;gap:6px;background:#38bdf8;color:#000;font-weight:700">
+                📱 Save to Photos / Share
+              </button>
+              <button class="open-folder-btn" onclick="openFolder()">📁 Open Folder</button>
+            `;
+          }
         }, 600);
         addToHistory({
           platform: detectPlatform(url),
@@ -989,7 +1017,7 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
           emoji: mode === 'audio' ? '🎵' : mode === 'image' ? '📷' : '📺',
           date: new Date().toISOString(),
         });
-        showToast('✅ Download complete! Saved to Downloads/NexLoad/', 'success');
+        showToast('✅ Download complete! Click Download or Save to Photos below.', 'success');
         updateQueueItem(task_id, 100, 'done');
 
       } else if (task.status === 'error') {
@@ -1030,6 +1058,36 @@ async function openFolder() {
     await fetch(`${API}/open-folder`, { method: 'POST' });
   } catch {
     showToast('Could not open folder. Navigate to Downloads/NexLoad/ manually.', 'info');
+  }
+}
+
+// ============================================================
+// SAVE TO PHOTOS / MOBILE GALLERY HELPER (Web Share API)
+// ============================================================
+async function shareOrSaveToPhotos(fileUrl, filename) {
+  try {
+    showToast('⏳ Preparing file for Photos / Gallery...', 'info');
+    const res = await fetch(fileUrl);
+    const blob = await res.blob();
+    const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: filename,
+        text: 'Save to Photos / Gallery'
+      });
+      showToast('✅ Saved via Device Share!', 'success');
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      showToast('💡 File downloaded! On iPhone: Open Files app -> Share -> Save Video.', 'info');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showToast('❌ Could not save: ' + err.message, 'error');
+    }
   }
 }
 

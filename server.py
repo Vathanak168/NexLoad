@@ -11,7 +11,7 @@ try:
     sys.stderr.reconfigure(encoding='utf-8')
 except Exception:
     pass
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify, Response, send_file
 from flask_cors import CORS
 import yt_dlp
 import requests
@@ -1109,6 +1109,26 @@ def open_folder():
         return jsonify({'ok': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+
+# ─────────────────────────────────────────────────────────────────
+# ROUTE: GET /api/file/<task_id> — Serve downloaded file to web/mobile clients
+# ─────────────────────────────────────────────────────────────────
+@app.route('/api/file/<task_id>')
+def serve_downloaded_file(task_id):
+    task = tasks.get(task_id)
+    if not task or task.get('status') != 'done':
+        return jsonify({'error': 'File not ready or not found'}), 404
+    filepath = task.get('filepath', '')
+    if not filepath or not os.path.exists(filepath):
+        fname = task.get('filename', '')
+        if fname:
+            cand = os.path.join(DOWNLOAD_DIR, fname)
+            if os.path.exists(cand):
+                filepath = cand
+    if not filepath or not os.path.exists(filepath):
+        return jsonify({'error': 'File deleted or moved from server'}), 404
+    return send_file(filepath, as_attachment=True, download_name=os.path.basename(filepath))
 
 
 # ─────────────────────────────────────────────────────────────────

@@ -991,7 +991,24 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
         if (meta) meta.textContent = '';
         setTimeout(() => {
           if (progWrap) progWrap.classList.remove('visible');
-          if (doneLine) doneLine.style.display = 'flex';
+          if (doneLine) {
+            doneLine.style.display = 'flex';
+            doneLine.style.flexWrap = 'wrap';
+            doneLine.style.gap = '8px';
+            const fn = escapeHtml(task.filename || 'video.mp4');
+            doneLine.innerHTML = `
+              <div style="width:100%;font-weight:700;color:#10b981;display:flex;align-items:center;gap:6px;margin-bottom:4px">
+                ✅ Complete: <span style="color:#f8fafc;font-weight:600">${fn}</span>
+              </div>
+              <a href="${API}/file/${task_id}" class="open-folder-btn" download style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:var(--grad-mid);color:#fff;font-weight:600">
+                📥 Download File
+              </a>
+              <button class="open-folder-btn" onclick="shareOrSaveToPhotos('${API}/file/${task_id}', '${fn}')" style="display:inline-flex;align-items:center;gap:6px;background:#38bdf8;color:#000;font-weight:700">
+                📱 Save to Photos / Share
+              </button>
+              <button class="open-folder-btn" onclick="openFolder()">📁 Open Folder</button>
+            `;
+          }
         }, 600);
         addToHistory({
           platform: detectPlatform(url),
@@ -1000,7 +1017,7 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
           emoji: mode === 'audio' ? '🎵' : mode === 'image' ? '📷' : '📺',
           date: new Date().toISOString(),
         });
-        showToast('✅ Download complete! Saved to Downloads/NexLoad/', 'success');
+        showToast('✅ Download complete! Click Download or Save to Photos below.', 'success');
         updateQueueItem(task_id, 100, 'done');
 
       } else if (task.status === 'error') {
@@ -1041,6 +1058,36 @@ async function openFolder() {
     await fetch(`${API}/open-folder`, { method: 'POST' });
   } catch {
     showToast('Could not open folder. Navigate to Downloads/NexLoad/ manually.', 'info');
+  }
+}
+
+// ============================================================
+// SAVE TO PHOTOS / MOBILE GALLERY HELPER (Web Share API)
+// ============================================================
+async function shareOrSaveToPhotos(fileUrl, filename) {
+  try {
+    showToast('⏳ Preparing file for Photos / Gallery...', 'info');
+    const res = await fetch(fileUrl);
+    const blob = await res.blob();
+    const file = new File([blob], filename, { type: blob.type || 'video/mp4' });
+    if (navigator.canShare && navigator.canShare({ files: [file] })) {
+      await navigator.share({
+        files: [file],
+        title: filename,
+        text: 'Save to Photos / Gallery'
+      });
+      showToast('✅ Saved via Device Share!', 'success');
+    } else {
+      const a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      showToast('💡 File downloaded! On iPhone: Open Files app -> Share -> Save Video.', 'info');
+    }
+  } catch (err) {
+    if (err.name !== 'AbortError') {
+      showToast('❌ Could not save: ' + err.message, 'error');
+    }
   }
 }
 
