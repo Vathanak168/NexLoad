@@ -15,3 +15,5 @@ downloads/
 
 # Environment variables
 .env
+Cookies/
+cookies.txt

@@ -297,6 +297,24 @@ def get_download_dir():
 
 DOWNLOAD_DIR = get_download_dir()
 
+# ── Detect Smart Cookies File ─────────────────────────────────────
+def get_cookies_file():
+    cand_paths = [
+        os.path.join(_BASE_DIR, 'Cookies', 'cookies.txt'),
+        os.path.join(_BASE_DIR, 'cookies.txt'),
+        os.environ.get('YTDLP_COOKIES_FILE', '')
+    ]
+    for cp in cand_paths:
+        if cp and os.path.exists(cp):
+            return cp
+    return None
+
+def apply_cookies(ydl_opts):
+    cf = get_cookies_file()
+    if cf:
+        ydl_opts['cookiefile'] = cf
+    return ydl_opts
+
 # ── In-memory task store ──────────────────────────────────────────
 tasks = {}  # task_id → { status, progress, speed, eta, filename, error }
 
@@ -326,12 +344,12 @@ def get_info():
         })
 
     try:
-        ydl_opts = {
+        ydl_opts = apply_cookies({
             'quiet': True,
             'no_warnings': True,
             'skip_download': True,
             'extract_flat': 'in_playlist',
-        }
+        })
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
             info = ydl.extract_info(url, download=False)
 
@@ -530,7 +548,7 @@ def get_image_info():
 
     for opts in strategies:
         try:
-            with yt_dlp.YoutubeDL(opts) as ydl:
+            with yt_dlp.YoutubeDL(apply_cookies(opts)) as ydl:
                 info = ydl.extract_info(url, download=False)
             break  # success
         except Exception as e:
@@ -790,7 +808,7 @@ def start_download():
 
                     for _opts in _info_strategies:
                         try:
-                            with yt_dlp.YoutubeDL(_opts) as ydl:
+                            with yt_dlp.YoutubeDL(apply_cookies(_opts)) as ydl:
                                 info = ydl.extract_info(url, download=False)
                             break
                         except Exception:
@@ -800,13 +818,13 @@ def start_download():
                         # Try yt-dlp download if it found formats
                         if info.get('formats'):
                             img_fmt = 'bestvideo[vcodec=none]/best[vcodec=none]/best'
-                            ydl_opts = {
+                            ydl_opts = apply_cookies({
                                 'format':         img_fmt,
                                 'outtmpl':        os.path.join(DOWNLOAD_DIR, '%(title)s.%(ext)s'),
                                 'progress_hooks': [progress_hook],
                                 'quiet':          True,
                                 'no_warnings':    True,
-                            }
+                            })
                             if FFMPEG_PATH:
                                 ydl_opts['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
@@ -851,13 +869,13 @@ def start_download():
                     # Strategy C — yt-dlp failed entirely (e.g. TikTok /photo/ slideshow)
                     # Try yt-dlp direct download with best format as last resort
                     try:
-                        dl_opts_fallback = {
+                        dl_opts_fallback = apply_cookies({
                             'format':         'best',
                             'outtmpl':        os.path.join(DOWNLOAD_DIR, f'image_{task_id}.%(ext)s'),
                             'progress_hooks': [progress_hook],
                             'quiet':          True,
                             'no_warnings':    True,
-                        }
+                        })
                         if FFMPEG_PATH:
                             dl_opts_fallback['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
                         with yt_dlp.YoutubeDL(dl_opts_fallback) as ydl:
@@ -921,7 +939,7 @@ def start_download():
             if FFMPEG_PATH:
                 ydl_opts['ffmpeg_location'] = os.path.dirname(FFMPEG_PATH)
 
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            with yt_dlp.YoutubeDL(apply_cookies(ydl_opts)) as ydl:
                 ydl.download([url])
 
             # Record stats
