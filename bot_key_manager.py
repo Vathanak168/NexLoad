@@ -47,8 +47,7 @@ def _save_bot_users(data):
         pass
 
 
-# Pending key creation state: { user_id: { "tier": ..., "days": ..., "step": ... } }
-_pending_keygen = {}
+_key_check_timestamps = {}
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -343,6 +342,13 @@ def register_key_handlers(bot):
     @bot.message_handler(commands=['myid'])
     def on_myid(message):
         user = message.from_user
+        hint = ""
+        if _is_admin(user.id):
+            hint = (
+                f"\n\n💡 <i>Copy the ID above and put it in</i>\n"
+                f"<code>TELEGRAM_ADMIN_IDS={user.id}</code>\n"
+                f"<i>in your .env file to lock admin access.</i>"
+            )
         bot.reply_to(
             message,
             f"🆔 <b>Your Telegram Info</b>\n\n"
@@ -350,10 +356,7 @@ def register_key_handlers(bot):
             f"🔢 User ID: <code>{user.id}</code>\n"
             f"👤 Name: <b>{user.first_name or ''} {user.last_name or ''}</b>\n"
             f"📛 Username: @{user.username or 'N/A'}\n\n"
-            f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-            f"💡 <i>Copy the ID above and put it in</i>\n"
-            f"<code>TELEGRAM_ADMIN_IDS={user.id}</code>\n"
-            f"<i>in your .env file to lock admin access.</i>",
+            f"━━━━━━━━━━━━━━━━━━━━━{hint}",
             parse_mode="HTML"
         )
 
@@ -540,34 +543,64 @@ def register_key_handlers(bot):
     @bot.message_handler(func=lambda m: m.text and m.text.upper().startswith("NEXLOAD-") and not m.text.startswith("/"))
     def on_key_input(message):
         """When user pastes a NEXLOAD key, validate it automatically."""
+        user_id = message.from_user.id
+        is_adm = _is_admin(user_id)
+        import time as _tm
+        if not is_adm:
+            now = _tm.time()
+            last_check = _key_check_timestamps.get(user_id, 0)
+            if now - last_check < 5.0:
+                bot.reply_to(message, "⏳ Please wait a few seconds before checking another key.")
+                return
+            _key_check_timestamps[user_id] = now
+
         key = message.text.strip().upper()
         result = license_manager.validate_key(key)
 
-        if result.get("valid"):
-            text = (
-                f"✅ <b>Key Valid!</b>\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🔐 Key: <code>{key}</code>\n\n"
-                f"✅ Status: <b>Active</b>\n"
-                f"⭐ Tier: <b>{result.get('tier_label', '?')}</b>\n"
-                f"👤 User: <b>{result.get('user', '?')}</b>\n"
-                f"⏳ Days Left: <b>{result.get('days_left', '?')}</b>\n"
-                f"📅 Expires: <b>{result.get('expires', '?')[:10]}</b>\n"
-                f"📥 Daily Limit: <b>{result.get('daily_limit', '?')}</b>\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━━"
-            )
+        if not is_adm:
+            if result.get("valid"):
+                text = (
+                    f"✅ <b>License Key Valid</b>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🔐 Key: <code>{key[:12]}...</code>\n"
+                    f"✅ Status: <b>Active</b>\n\n"
+                    f"💡 <i>Detailed customer information (name, tier, expiration) is restricted to administrators for privacy.</i>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━"
+                )
+            else:
+                text = (
+                    f"❌ <b>License Key Invalid</b>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🔐 Key: <code>{key[:12]}...</code>\n"
+                    f"❌ Status: <b>Invalid or Expired</b>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━"
+                )
         else:
-            text = (
-                f"❌ <b>Key Invalid</b>\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━━\n\n"
-                f"🔐 Key: <code>{key}</code>\n\n"
-                f"❌ Status: <b>Invalid</b>\n"
-                f"📝 Reason: <i>{result.get('reason', 'Unknown')}</i>\n\n"
-                f"━━━━━━━━━━━━━━━━━━━━━"
-            )
+            if result.get("valid"):
+                text = (
+                    f"✅ <b>Key Valid!</b>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🔐 Key: <code>{key}</code>\n\n"
+                    f"✅ Status: <b>Active</b>\n"
+                    f"⭐ Tier: <b>{result.get('tier_label', '?')}</b>\n"
+                    f"👤 User: <b>{result.get('user', '?')}</b>\n"
+                    f"⏳ Days Left: <b>{result.get('days_left', '?')}</b>\n"
+                    f"📅 Expires: <b>{result.get('expires', '?')[:10]}</b>\n"
+                    f"📥 Daily Limit: <b>{result.get('daily_limit', '?')}</b>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━"
+                )
+            else:
+                text = (
+                    f"❌ <b>Key Invalid</b>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━\n\n"
+                    f"🔐 Key: <code>{key}</code>\n\n"
+                    f"❌ Status: <b>Invalid</b>\n"
+                    f"📝 Reason: <i>{result.get('reason', 'Unknown')}</i>\n\n"
+                    f"━━━━━━━━━━━━━━━━━━━━━"
+                )
 
         markup = InlineKeyboardMarkup(row_width=2)
-        if _is_admin(message.from_user.id) and result.get("valid"):
+        if is_adm and result.get("valid"):
             markup.row(InlineKeyboardButton("🚫 Revoke This Key", callback_data=f"action:revoke:{key}"))
         markup.row(InlineKeyboardButton("🏠 Main Menu", callback_data="nav:main"))
 

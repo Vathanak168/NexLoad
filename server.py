@@ -5,7 +5,7 @@ Supports: YouTube, TikTok, Instagram, Facebook, Pinterest, Twitter/X, 1000+ more
 Features: License auth, stats, custom folder, subtitles, speed limiter
 """
 
-import os, sys, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime, tempfile
+import os, sys, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime, tempfile, urllib.parse
 config = None
 try:
     sys.stdout.reconfigure(encoding='utf-8')
@@ -63,6 +63,10 @@ def _verify_email_token(token: str) -> str:
         return email if email and '@' in email else ''
     except Exception:
         return ''
+
+def _make_task_token(task_id: str) -> str:
+    secret = (os.environ.get('SECRET_KEY') or getattr(config, 'SECRET_KEY', '') or 'nexload_secret').encode('utf-8')
+    return hmac.new(secret, f"task|{task_id}".encode('utf-8'), hashlib.sha256).hexdigest()[:16]
 
 def _validate_license(full_key: str, email: str = None, allow_bind_email: bool = False) -> dict:
     """Validate license using SQL Database with Gmail account binding"""
@@ -846,16 +850,26 @@ def start_download():
     DOWNLOAD_DIR = get_download_dir()
     os.makedirs(DOWNLOAD_DIR, exist_ok=True)
 
+    # Memory cleanup: remove tasks older than 2 hours or keep max 500 tasks
+    now = time.time()
+    to_delete = [tid for tid, tinfo in tasks.items() if now - tinfo.get('started_at', now) > 7200]
+    for tid in to_delete:
+        tasks.pop(tid, None)
+    if len(tasks) > 500:
+        for tid in list(tasks.keys())[:-400]:
+            tasks.pop(tid, None)
+
     task_id = uuid.uuid4().hex[:8]
     tasks[task_id] = {
-        'status':   'starting',
-        'progress': 0,
-        'speed':    '',
-        'eta':      '',
-        'size':     '',
-        'filename': '',
-        'filepath': '',
-        'error':    None,
+        'status':     'starting',
+        'progress':   0,
+        'speed':      '',
+        'eta':        '',
+        'size':       '',
+        'filename':   '',
+        'filepath':   '',
+        'error':      None,
+        'started_at': time.time(),
     }
 
     def progress_hook(d):
@@ -1142,7 +1156,7 @@ def start_download():
                 ydl_opts['ratelimit'] = speed_limit
 
             # Subtitles
-            if subtitles and FFMPEG_PATH:
+            if subtitles and FFMPEG_PATH and mode == 'video':
                 ydl_opts['writesubtitles']   = True
                 ydl_opts['writeautomaticsub'] = True
                 ydl_opts['subtitleslangs']    = [sub_lang, 'en']
@@ -1171,7 +1185,8 @@ def start_download():
 
             # Record stats
             final_size = os.path.getsize(final_path) if final_path and os.path.exists(final_path) else 0
-            _record_download(platform=url.split('/')[2] if '/' in url else 'unknown', file_size=final_size)
+            parsed_domain = urllib.parse.urlparse(url).netloc or 'unknown'
+            _record_download(platform=parsed_domain, file_size=final_size)
             update = {'status': 'done', 'progress': 100}
             if final_path:
                 update.update({
@@ -1247,7 +1262,7 @@ def start_download():
             tasks[task_id].update({'status': 'error', 'error': err_str})
 
     threading.Thread(target=run, daemon=True).start()
-    return jsonify({'task_id': task_id, 'download_dir': DOWNLOAD_DIR})
+    return jsonify({'task_id': task_id, 'task_token': _make_task_token(task_id), 'download_dir': DOWNLOAD_DIR})
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1256,6 +1271,17 @@ def start_download():
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/progress/<task_id>')
 def get_progress(task_id):
+    token = request.args.get('token', '').strip()
+    if token:
+        if not hmac.compare_digest(token, _make_task_token(task_id)):
+            return jsonify({'error': 'Invalid task token'}), 401
+    else:
+        key = str(request.headers.get('X-License-Key') or request.args.get('license_key') or '').strip().upper()
+        if not key:
+            return jsonify({'error': 'License required or missing task token'}), 401
+        res = _validate_license(key, allow_bind_email=False)
+        if not res.get('valid'):
+            return jsonify({'error': res.get('reason', 'License invalid')}), 403
     def stream():
         while True:
             task = tasks.get(task_id, {'status': 'not_found', 'error': 'Task not found'})
@@ -1451,6 +1477,17 @@ def open_folder():
 # ─────────────────────────────────────────────────────────────────
 @app.route('/api/file/<task_id>')
 def serve_downloaded_file(task_id):
+    token = request.args.get('token', '').strip()
+    if token:
+        if not hmac.compare_digest(token, _make_task_token(task_id)):
+            return jsonify({'error': 'Invalid task token'}), 401
+    else:
+        key = str(request.headers.get('X-License-Key') or request.args.get('license_key') or '').strip().upper()
+        if not key:
+            return jsonify({'error': 'License required or missing task token'}), 401
+        res = _validate_license(key, allow_bind_email=False)
+        if not res.get('valid'):
+            return jsonify({'error': res.get('reason', 'License invalid')}), 403
     task = tasks.get(task_id)
     if not task or task.get('status') != 'done':
         return jsonify({'error': 'File not ready or not found'}), 404

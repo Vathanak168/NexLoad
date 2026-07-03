@@ -12,6 +12,11 @@ ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
+import sys
+if PARENT_DIR not in sys.path:
+    sys.path.insert(0, PARENT_DIR)
+import db as sql_db
+
 LICENSE_DB = os.path.join(PARENT_DIR, "licenses.json")
 _secret_env = os.environ.get("SECRET_KEY", "NexLoad-Secret-2026-ChangeThis-To-Something-Unique")
 SECRET_KEY = _secret_env.encode() if isinstance(_secret_env, str) else _secret_env
@@ -24,14 +29,25 @@ TIERS = {
 }
 
 def _load_db():
-    if os.path.exists(LICENSE_DB):
-        with open(LICENSE_DB, "r", encoding="utf-8") as f:
-            return json.load(f)
-    return {}
+    try:
+        return sql_db.load_all_licenses()
+    except Exception:
+        if os.path.exists(LICENSE_DB):
+            with open(LICENSE_DB, "r", encoding="utf-8") as f:
+                return json.load(f)
+        return {}
 
-def _save_db(db):
-    with open(LICENSE_DB, "w", encoding="utf-8") as f:
-        json.dump(db, f, indent=2, ensure_ascii=False)
+def _save_db(data):
+    try:
+        for k, v in data.items():
+            sql_db.save_license(v)
+    except Exception as e:
+        print(f"⚠️ [SQL DB] Save note: {e}")
+    try:
+        with open(LICENSE_DB, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=2, ensure_ascii=False)
+    except Exception:
+        pass
 
 def _make_signature(key_body: str) -> str:
     sig = hmac.new(SECRET_KEY, key_body.encode(), hashlib.sha256).hexdigest()

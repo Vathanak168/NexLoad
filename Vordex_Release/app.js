@@ -463,6 +463,8 @@ function navigateTo(pageId) {
   const navBackBtn = document.getElementById('navBackBtn');
   if (navBackBtn) navBackBtn.style.display = (pageId === 'home') ? 'none' : 'inline-flex';
   state.currentPage = pageId;
+  if (pageId === 'stats' && typeof loadStats === 'function') loadStats();
+  if (pageId === 'settings' && typeof refreshFolderDisplay === 'function') refreshFolderDisplay();
 }
 
 document.querySelectorAll('.nav-tab').forEach(tab =>
@@ -674,7 +676,7 @@ function buildResultCard(platform, url, info) {
   const cardId = `card-${ts}`;
 
   // Platforms that support image download
-  const imageCapablePlatforms = ['instagram', 'pinterest', 'tiktok', 'facebook', 'universal'];
+  const imageCapablePlatforms = ['instagram', 'pinterest', 'tiktok', 'facebook', 'pexels', 'universal'];
   const supportsImage = imageCapablePlatforms.includes(platform);
   const isImagePost = !!(info?.isImagePost);
   const isPlaylist = !!(info?.is_playlist);
@@ -1036,11 +1038,15 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
     const task_id = data.task_id;
+    state.taskTokens = state.taskTokens || {};
+    if (data.task_token) state.taskTokens[task_id] = data.task_token;
+    const tokenParam = data.task_token ? (`?token=` + encodeURIComponent(data.task_token)) : '';
+
     // Add to queue panel
     addToQueue(task_id, dlTitle || url.slice(0,60), url);
 
     // Listen to SSE progress
-    const evtSrc = new EventSource(`${API}/progress/${task_id}`);
+    const evtSrc = new EventSource(`${API}/progress/${task_id}${tokenParam}`);
 
     evtSrc.onmessage = (e) => {
       const task = JSON.parse(e.data);
@@ -1070,14 +1076,15 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
             doneLine.style.flexWrap = 'wrap';
             doneLine.style.gap = '8px';
             const fn = escapeHtml(task.filename || 'video.mp4');
+            const tToken = (state.taskTokens && state.taskTokens[task_id]) ? ('?token=' + encodeURIComponent(state.taskTokens[task_id])) : '';
             doneLine.innerHTML = `
               <div style="width:100%;font-weight:700;color:#10b981;display:flex;align-items:center;gap:6px;margin-bottom:4px">
                 ✅ Complete: <span style="color:#f8fafc;font-weight:600">${fn}</span>
               </div>
-              <a href="${API}/file/${task_id}" class="open-folder-btn" download style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:var(--grad-mid);color:#fff;font-weight:600">
+              <a href="${API}/file/${task_id}${tToken}" class="open-folder-btn" download style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:var(--grad-mid);color:#fff;font-weight:600">
                 📥 Download File
               </a>
-              <button class="open-folder-btn" onclick="shareOrSaveToPhotos('${API}/file/${task_id}', '${fn}')" style="display:inline-flex;align-items:center;gap:6px;background:#38bdf8;color:#000;font-weight:700">
+              <button class="open-folder-btn" onclick="shareOrSaveToPhotos('${API}/file/${task_id}${tToken}', '${fn}')" style="display:inline-flex;align-items:center;gap:6px;background:#38bdf8;color:#000;font-weight:700">
                 📱 Save to Photos / Share
               </button>
               <button class="open-folder-btn" onclick="openFolder()">📁 Open Folder</button>
@@ -1183,7 +1190,8 @@ function detectPlatform(url) {
   if (url.includes('facebook') || url.includes('fb.watch')) return 'facebook';
   if (url.includes('instagram')) return 'instagram';
   if (url.includes('pinterest')) return 'pinterest';
-  return 'youtube';
+  if (url.includes('pexels')) return 'pexels';
+  return 'universal';
 }
 
 // ============================================================
@@ -1767,7 +1775,8 @@ async function startPlatformBatch(prefix) {
       if (!res.ok || data.error) throw new Error(data.error || 'HTTP ' + res.status);
 
       await new Promise((resolve, reject) => {
-        const es = new EventSource(API + '/progress/' + data.task_id);
+        const tokenParam = data.task_token ? ('?token=' + encodeURIComponent(data.task_token)) : '';
+        const es = new EventSource(API + '/progress/' + data.task_id + tokenParam);
         es.onmessage = ev => {
           try {
             const t = JSON.parse(ev.data);
@@ -1805,21 +1814,7 @@ async function startPlatformBatch(prefix) {
 }
 
 
-// ============================================================
-// NAVIGATION — extended to handle stats page
-// ============================================================
-const _origNavigateTo = navigateTo;
-function navigateTo(pageId) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  const target = document.getElementById('page-' + pageId);
-  if (target) target.classList.add('active');
-  document.querySelectorAll('.nav-tab').forEach(tab =>
-    tab.classList.toggle('active', tab.dataset.page === pageId)
-  );
-  state.currentPage = pageId;
-  if (pageId === 'stats') loadStats();
-  if (pageId === 'settings') refreshFolderDisplay();
-}
+
 
 // ============================================================
 // INIT

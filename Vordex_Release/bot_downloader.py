@@ -317,7 +317,8 @@ def register_downloader_handlers(bot):
                             parse_mode="HTML"
                         )
                         with open(filename, 'rb') as vf:
-                            title = info.get('title', 'NexLoad Video')
+                            raw_title = str(info.get('title', 'NexLoad Video'))
+                            title = html.escape(raw_title)
                             try:
                                 duration = int(info.get('duration') or 0)
                             except Exception:
@@ -358,10 +359,11 @@ def register_downloader_handlers(bot):
                             parse_mode="HTML",
                             reply_markup=_kb_error()
                         )
-                    try:
-                        os.remove(filename)
-                    except Exception:
-                        pass
+                    if filename and os.path.exists(filename):
+                        try:
+                            os.remove(filename)
+                        except Exception:
+                            pass
                 else:
                     bot.edit_message_text(
                         "❌ <b>Download Failed</b>\n\n"
@@ -372,22 +374,39 @@ def register_downloader_handlers(bot):
                         reply_markup=_kb_error()
                     )
             except Exception as e:
+                if filename and os.path.exists(filename):
+                    try:
+                        os.remove(filename)
+                    except Exception:
+                        pass
                 full_error = str(e)
                 if "Instagram sent an empty media response" in full_error or "cookies" in full_error.lower():
                     error_msg = "Instagram requires logged-in cookies for this link. Set YTDLP_COOKIES_FILE to a valid cookies.txt file on the server."
                 else:
                     error_msg = full_error[:200]
-                bot.edit_message_text(
-                    f"❌ <b>Download Failed</b>\n\n"
-                    f"<i>{error_msg}</i>\n\n"
-                    "💡 <b>Tips:</b>\n"
-                    "• Make sure the URL is correct and publicly accessible\n"
-                    "• Some sites may restrict bot access\n"
-                    "• Try the NexLoad Web App for better compatibility",
-                    message.chat.id,
-                    status_msg.message_id,
-                    parse_mode="HTML",
-                    reply_markup=_kb_error()
-                )
+                escaped_error = html.escape(error_msg)
+                try:
+                    bot.edit_message_text(
+                        f"❌ <b>Download Failed</b>\n\n"
+                        f"<i>{escaped_error}</i>\n\n"
+                        "💡 <b>Tips:</b>\n"
+                        "• Make sure the URL is correct and publicly accessible\n"
+                        "• Some sites may restrict bot access\n"
+                        "• Try the NexLoad Web App for better compatibility",
+                        message.chat.id,
+                        status_msg.message_id,
+                        parse_mode="HTML",
+                        reply_markup=_kb_error()
+                    )
+                except Exception:
+                    try:
+                        bot.send_message(
+                            message.chat.id,
+                            f"❌ <b>Download Failed</b>\n\n<i>{escaped_error}</i>",
+                            parse_mode="HTML",
+                            reply_markup=_kb_error()
+                        )
+                    except Exception:
+                        pass
 
         threading.Thread(target=worker, daemon=True).start()
