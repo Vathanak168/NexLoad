@@ -412,16 +412,19 @@ COOKIE_CACHE_DIR = os.environ.get('YTDLP_COOKIE_CACHE_DIR') or os.path.join(temp
 
 def _writable_cookiefile(path):
     """Return a writable cookie file path; copy read-only secret mounts to /tmp."""
-    if not path or not os.path.exists(path):
+    if not path:
         return None
     try:
-        normalized = path.replace('\\', '/')
-        if os.access(path, os.W_OK) and not normalized.startswith('/etc/secrets/'):
-            return path
-
+        if not os.path.isfile(path):
+            return None
+    except OSError as e:
+        print(f'  ⚠️  cookies: cannot access cookie candidate {path}: {e}')
+        return None
+    try:
         os.makedirs(COOKIE_CACHE_DIR, exist_ok=True)
         dst = os.path.join(COOKIE_CACHE_DIR, 'cookies.txt')
-        shutil.copyfile(path, dst)
+        if os.path.abspath(path) != os.path.abspath(dst):
+            shutil.copyfile(path, dst)
         return dst
     except Exception as e:
         print(f'  ⚠️  cookies: cannot prepare writable cookie file from {path}: {e}')
@@ -494,6 +497,15 @@ def require_license(fn):
             return jsonify({'error': 'License required'}), 401
 
         result = _validate_license(key, email=email, allow_bind_email=False)
+        if (
+            not result.get('valid')
+            and email
+            and result.get('reason') == 'Please verify your Gmail account before linking this key.'
+        ):
+            # Resource APIs should not perform first-time Gmail binding. If a
+            # valid key is still unbound, allow the request and leave binding
+            # to /api/auth/validate with a verified email token.
+            result = _validate_license(key, email='', allow_bind_email=False)
         if not result.get('valid'):
             return jsonify({'error': result.get('reason', 'License invalid')}), 403
 

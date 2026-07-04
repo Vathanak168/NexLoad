@@ -66,7 +66,12 @@ def _get_cookies_file():
 
 
 def _writable_cookiefile(path):
-    if not path or not os.path.exists(path):
+    if not path:
+        return None
+    try:
+        if not os.path.isfile(path):
+            return None
+    except OSError:
         return None
     try:
         os.makedirs(COOKIE_CACHE_DIR, exist_ok=True)
