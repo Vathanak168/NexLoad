@@ -33,6 +33,17 @@ function authHeaders(extra = {}) {
   return headers;
 }
 
+async function readApiJson(res) {
+  const text = await res.text();
+  if (!text) return {};
+  try {
+    return JSON.parse(text);
+  } catch {
+    const snippet = text.replace(/\s+/g, ' ').slice(0, 180);
+    return { error: `Server returned non-JSON response (${res.status}): ${snippet}` };
+  }
+}
+
 // ============================================================
 // I18N
 // ============================================================
@@ -158,7 +169,7 @@ let googleSdkInitialized = false;
 async function checkServer() {
   try {
     const res = await fetch(`${API}/ping`, { signal: AbortSignal.timeout(10000) });
-    const d = await res.json();
+    const d = await readApiJson(res);
     setServerStatus(d.ok === true);
     if (d.dir) state.downloadDir = d.dir;
     initGoogleSignIn(d.google_client_id);
@@ -214,7 +225,7 @@ async function processSSOLogin(payload) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
     });
-    const data = await res.json();
+    const data = await readApiJson(res);
     if (data.valid && data.auto_login) {
       localStorage.setItem('nexload_license', data.key);
       localStorage.setItem('nexload_email', data.bound_email);
@@ -293,7 +304,7 @@ async function submitLicense() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, email, email_token: window.verifiedSSOToken || '' }),
     });
-    const data = await res.json();
+    const data = await readApiJson(res);
 
     if (data.valid) {
       localStorage.setItem('nexload_license', key);
@@ -337,26 +348,6 @@ async function checkCachedLicense() {
     return true;
   }
 
-  // 1. If email session stored, check automatic Single Sign-On (SSO) first!
-  if (email) {
-    try {
-      const res = await fetch(`${API}/auth/google`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email })
-      });
-      const data = await res.json();
-      if (data.valid && data.auto_login) {
-        localStorage.setItem('nexload_license', data.key);
-        state.licenseKey = data.key;
-        state.licenseInfo = data;
-        hideLicenseOverlay();
-        updateLicenseInfoBox(data);
-        return true;
-      }
-    } catch {}
-  }
-
   if (!key) return false;
   try {
     const res = await fetch(`${API}/auth/validate`, {
@@ -364,7 +355,7 @@ async function checkCachedLicense() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ key, email }),
     });
-    const data = await res.json();
+    const data = await readApiJson(res);
     if (data.valid) {
       state.licenseInfo = data;
       hideLicenseOverlay();
@@ -589,7 +580,7 @@ async function analyzeUrl(platform) {
 
   try {
     const res = await fetch(`${API}/info?url=${encodeURIComponent(url)}`, { headers: authHeaders() });
-    const data = await res.json();
+    const data = await readApiJson(res);
 
     if (!res.ok || data.error) {
       if (data.is_redirect && data.download_url) {
@@ -624,7 +615,7 @@ async function analyzeUrl(platform) {
     if ((noFormats || isCandidate) && imageSupportedPlatforms.includes(platform)) {
       try {
         const imgRes = await fetch(`${API}/image-info?url=${encodeURIComponent(url)}`, { headers: authHeaders() });
-        const imgData = await imgRes.json();
+        const imgData = await readApiJson(imgRes);
         if (imgRes.ok && !imgData.error) {
           data.isImagePost = true;
           data.imageInfo = imgData;
@@ -1034,7 +1025,7 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
         speed_limit: state.settings.speedLimit || '',
       }),
     });
-    const data = await res.json();
+    const data = await readApiJson(res);
     if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
 
     const task_id = data.task_id;
@@ -1459,7 +1450,7 @@ async function loadStats() {
   if (!state.serverOnline) return;
   try {
     const res = await fetch(`${API}/stats`, { headers: authHeaders() });
-    const data = await res.json();
+    const data = await readApiJson(res);
     renderStats(data);
   } catch { /* ignore */ }
 }
@@ -1555,7 +1546,7 @@ async function setCustomFolder() {
       headers: authHeaders({ 'Content-Type': 'application/json' }),
       body: JSON.stringify({ folder }),
     });
-    const data = await res.json();
+    const data = await readApiJson(res);
     if (data.ok) {
       refreshFolderDisplay(data.folder);
       showToast('📂 Download folder set: ' + data.folder, 'success');
@@ -1570,7 +1561,7 @@ async function refreshFolderDisplay(folder) {
   if (!folder && state.serverOnline) {
     try {
       const res = await fetch(`${API}/get-folder`, { headers: authHeaders() });
-      const data = await res.json();
+      const data = await readApiJson(res);
       folder = data.folder;
     } catch { folder = '~/Downloads/NexLoad'; }
   }
@@ -1771,7 +1762,7 @@ async function startPlatformBatch(prefix) {
         headers: authHeaders({ 'Content-Type': 'application/json' }),
         body: JSON.stringify({ url: url, quality: '1080', mode: 'video' }),
       });
-      const data = await res.json();
+      const data = await readApiJson(res);
       if (!res.ok || data.error) throw new Error(data.error || 'HTTP ' + res.status);
 
       await new Promise((resolve, reject) => {

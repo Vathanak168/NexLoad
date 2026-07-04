@@ -14,6 +14,7 @@ except Exception:
     pass
 from flask import Flask, request, jsonify, Response, send_file
 from flask_cors import CORS
+from werkzeug.exceptions import HTTPException
 import yt_dlp
 import requests
 import db
@@ -343,6 +344,18 @@ app = Flask(__name__, static_folder=_BASE_DIR, static_url_path='')
 _cors_default = f'http://localhost:{PORT},http://127.0.0.1:{PORT},null'
 _allowed_origins = [o.strip() for o in os.environ.get('ALLOWED_ORIGINS', _cors_default).split(',') if o.strip()]
 CORS(app, origins=_allowed_origins)
+
+
+@app.errorhandler(Exception)
+def handle_api_exception(exc):
+    if not request.path.startswith('/api/'):
+        if isinstance(exc, HTTPException):
+            return exc
+        raise exc
+    if isinstance(exc, HTTPException):
+        return jsonify({'error': exc.description or exc.name}), exc.code
+    print(f"[API Error] {request.method} {request.path}: {exc}", file=sys.stderr)
+    return jsonify({'error': str(exc) or 'Internal server error'}), 500
 
 # ── Serve the UI from root ────────────────────────────────────────
 @app.route('/')
@@ -1353,7 +1366,10 @@ def auth_google():
         except Exception as e:
             print(f"[Google Auth] Token verification failed: {e}")
             return jsonify({'valid': False, 'reason': 'Google token verification error'}), 401
-    elif os.environ.get('ALLOW_UNVERIFIED_EMAIL_LOGIN', '').lower() in ('1', 'true', 'yes'):
+    elif submitted_email and (
+        not GOOGLE_CLIENT_ID
+        or os.environ.get('ALLOW_UNVERIFIED_EMAIL_LOGIN', '').lower() in ('1', 'true', 'yes')
+    ):
         email = submitted_email
     else:
         return jsonify({'valid': False, 'reason': 'Google ID token is required'}), 400
