@@ -9,7 +9,7 @@ Double-click NexLoad.pyw (or shortcut) to launch the app.
 import os, sys, subprocess, time, socket, webbrowser, threading
 
 BASE = os.path.dirname(os.path.abspath(__file__))
-SERVER_URL = 'http://localhost:5000'
+SERVER_URL = 'http://127.0.0.1:5000'
 SERVER_PORT = 5000
 
 
@@ -74,8 +74,11 @@ def open_app_window():
     ]
 
     icon_path = os.path.join(BASE, 'nexload.ico')
+    user_data_dir = os.path.join(os.environ.get('APPDATA', BASE), 'NexLoad', 'profile')
+    os.makedirs(user_data_dir, exist_ok=True)
     app_args = [
         f'--app={SERVER_URL}',
+        f'--user-data-dir={user_data_dir}',
         '--window-size=1280,860',
         '--window-position=100,60',
         '--no-first-run',
@@ -122,7 +125,7 @@ def show_tray_fallback():
 
 def check_and_run_first_run_consent(app_dir):
     import json
-    consent_file = os.path.join(app_dir, 'youtube_consent.json')
+    consent_file = os.path.join(app_dir, 'desktop_consent.json')
     if os.path.exists(consent_file):
         return
 
@@ -130,7 +133,7 @@ def check_and_run_first_run_consent(app_dir):
         import tkinter as tk
         root = tk.Tk()
         root.title("NexLoad Desktop — First Run Setup")
-        root.geometry("540x360")
+        root.geometry("540x440")
         root.resizable(False, False)
 
         frame = tk.Frame(root, padx=24, pady=20)
@@ -142,15 +145,19 @@ def check_and_run_first_run_consent(app_dir):
         lbl_sub = tk.Label(frame, text="Please configure your local video extraction components below before launching.", font=("Arial", 10), wraplength=480, justify="left", anchor="w")
         lbl_sub.pack(fill="x", pady=(0, 15))
 
-        var_yt = tk.BooleanVar(value=False)
+        var_yt = tk.BooleanVar(value=True)
         chk_yt = tk.Checkbutton(frame, text="Enable YouTube Download (optional) — this installs a local component that runs on your computer to download YouTube videos directly using your own internet connection.", variable=var_yt, font=("Arial", 9, "bold"), wraplength=460, justify="left")
         chk_yt.pack(fill="x", pady=(0, 15))
 
-        lbl_info = tk.Label(frame, text="Why is this needed?\nYouTube blocks cloud servers. To download YouTube videos reliably, the extraction engine (yt-dlp + ffmpeg) must run directly on your personal computer using your home internet connection. No personal account cookies are used without explicit permission.", font=("Arial", 8), fg="#555555", wraplength=480, justify="left", bg="#f5f5f5", padx=10, pady=8)
+        var_meta = tk.BooleanVar(value=False)
+        chk_meta = tk.Checkbutton(frame, text="Enable Facebook & Instagram Download — Allow NexLoad to securely use your local Chrome/Edge browser cookies to authenticate and download videos.", variable=var_meta, font=("Arial", 9, "bold"), wraplength=460, justify="left")
+        chk_meta.pack(fill="x", pady=(0, 15))
+
+        lbl_info = tk.Label(frame, text="Why is this needed?\nYouTube blocks cloud servers. Meta (Facebook/Instagram) blocks downloads without login. To download reliably, the extraction engine must run directly on your personal computer using your home internet connection and browser session. No personal account cookies are collected or saved on our servers.", font=("Arial", 8), fg="#555555", wraplength=480, justify="left", bg="#f5f5f5", padx=10, pady=8)
         lbl_info.pack(fill="x", pady=(0, 20))
 
         def on_continue():
-            data = {"youtube_enabled": bool(var_yt.get()), "timestamp": time.time()}
+            data = {"youtube_enabled": bool(var_yt.get()), "meta_enabled": bool(var_meta.get()), "timestamp": time.time()}
             try:
                 with open(consent_file, "w", encoding="utf-8") as f:
                     json.dump(data, f, indent=2)
@@ -166,7 +173,7 @@ def check_and_run_first_run_consent(app_dir):
     except Exception:
         try:
             with open(consent_file, "w", encoding="utf-8") as f:
-                json.dump({"youtube_enabled": False, "timestamp": time.time()}, f, indent=2)
+                json.dump({"youtube_enabled": False, "meta_enabled": False, "timestamp": time.time()}, f, indent=2)
         except Exception:
             pass
 

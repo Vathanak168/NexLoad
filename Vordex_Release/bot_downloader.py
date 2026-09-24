@@ -10,10 +10,16 @@ Features:
 
 import html
 import mimetypes
-import os, threading, time, tempfile, urllib.parse, shutil
-import config
+import os
+import shutil
+import tempfile
+import threading
+import time
+import urllib.parse
 
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+import config
 
 _cloud_runtime = bool(os.environ.get("RENDER") or os.environ.get("DYNO"))
 _default_temp_dir = os.path.join(tempfile.gettempdir(), "NexLoadBot") if _cloud_runtime else os.path.join(config.BASE_DIR, "bot_temp")
@@ -244,7 +250,7 @@ def register_downloader_handlers(bot):
                     except Exception:
                         ffmpeg_exe = None
 
-                out_tmpl = os.path.join(TEMP_DIR, f"%(id)s.%(ext)s")
+                out_tmpl = os.path.join(TEMP_DIR, "%(id)s.%(ext)s")
                 fmt_str = (
                     'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
                     'bestvideo[height<=720]+bestaudio/'
@@ -273,8 +279,8 @@ def register_downloader_handlers(bot):
                         status_msg.message_id,
                         parse_mode="HTML"
                     )
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [Error]: {e}")
                 filename = None
                 info = {}
                 try:
@@ -288,7 +294,9 @@ def register_downloader_handlers(bot):
                             prepared = ydl.prepare_filename(info)
                             filename = _resolve_final_file(prepared, info, started_at)
                 except Exception as ydl_err:
-                    import urllib.request as _urq, json as _js, re as _re, time as _tm
+                    import json as _js
+                    import time as _tm
+                    import urllib.request as _urq
                     # Fallback 1: TikTok via TikWM
                     if 'tiktok.com' in url:
                         req = _urq.Request(f"https://www.tikwm.com/api/?url={url}", headers={'User-Agent': 'Mozilla/5.0'})
@@ -343,8 +351,8 @@ def register_downloader_handlers(bot):
                         # Delete the status message and send completion with menu
                         try:
                             bot.delete_message(message.chat.id, status_msg.message_id)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"⚠️ [Error]: {e}")
 
                         bot.send_message(
                             message.chat.id,
@@ -367,8 +375,8 @@ def register_downloader_handlers(bot):
                     if filename and os.path.exists(filename):
                         try:
                             os.remove(filename)
-                        except Exception:
-                            pass
+                        except Exception as e:
+                            print(f"⚠️ [Error]: {e}")
                 else:
                     bot.edit_message_text(
                         "❌ <b>Download Failed</b>\n\n"
@@ -382,8 +390,8 @@ def register_downloader_handlers(bot):
                 if filename and os.path.exists(filename):
                     try:
                         os.remove(filename)
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️ [Error]: {e}")
                 full_error = str(e)
                 if "Instagram sent an empty media response" in full_error or "cookies" in full_error.lower():
                     error_msg = "Instagram requires logged-in cookies for this link. Set YTDLP_COOKIES_FILE to a valid cookies.txt file on the server."
@@ -411,7 +419,7 @@ def register_downloader_handlers(bot):
                             parse_mode="HTML",
                             reply_markup=_kb_error()
                         )
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️ [Error]: {e}")
 
         threading.Thread(target=worker, daemon=True).start()

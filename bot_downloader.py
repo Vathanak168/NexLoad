@@ -10,10 +10,16 @@ Features:
 
 import html
 import mimetypes
-import os, threading, time, tempfile, urllib.parse, shutil
-import config
+import os
+import shutil
+import tempfile
+import threading
+import time
+import urllib.parse
 
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+import config
 
 _cloud_runtime = bool(os.environ.get("RENDER") or os.environ.get("DYNO"))
 _default_temp_dir = os.path.join(tempfile.gettempdir(), "NexLoadBot") if _cloud_runtime else os.path.join(config.BASE_DIR, "bot_temp")
@@ -244,7 +250,7 @@ def register_downloader_handlers(bot):
                     except Exception:
                         ffmpeg_exe = None
 
-                out_tmpl = os.path.join(TEMP_DIR, f"%(id)s.%(ext)s")
+                out_tmpl = os.path.join(TEMP_DIR, "%(id)s.%(ext)s")
                 fmt_str = (
                     'bestvideo[height<=720][ext=mp4]+bestaudio[ext=m4a]/'
                     'bestvideo[height<=720]+bestaudio/'
@@ -288,10 +294,14 @@ def register_downloader_handlers(bot):
                             prepared = ydl.prepare_filename(info)
                             filename = _resolve_final_file(prepared, info, started_at)
                 except Exception as ydl_err:
-                    import urllib.request as _urq, json as _js, re as _re, time as _tm
+                    import json as _js
+                    import time as _tm
+                    import urllib.request as _urq
                     # Fallback 1: TikTok via TikWM
                     if 'tiktok.com' in url:
-                        req = _urq.Request(f"https://www.tikwm.com/api/?url={url}", headers={'User-Agent': 'Mozilla/5.0'})
+                        import urllib.parse as _urp
+                        data = _urp.urlencode({'url': url, 'hd': '1'}).encode('utf-8')
+                        req = _urq.Request("https://www.tikwm.com/api/", data=data, headers={'User-Agent': 'Mozilla/5.0', 'Content-Type': 'application/x-www-form-urlencoded'})
                         with _urq.urlopen(req) as res:
                             data = _js.loads(res.read().decode())
                             if data.get('code') == 0 and data.get('data'):
@@ -313,9 +323,11 @@ def register_downloader_handlers(bot):
                 if filename and os.path.exists(filename):
                     size_mb = os.path.getsize(filename) / (1024 * 1024)
                     if size_mb <= 48:
-                        send_method = bot.send_photo if _is_image_file(filename) else bot.send_video
+                        is_img = _is_image_file(filename)
+                        send_method = bot.send_photo if is_img else bot.send_video
+                        media_type = "image" if is_img else "video"
                         bot.edit_message_text(
-                            "⬆️ <b>Uploading video to Telegram...</b>\n"
+                            f"⬆️ <b>Uploading {media_type} to Telegram...</b>\n"
                             f"📦 File size: <b>{size_mb:.1f} MB</b>",
                             message.chat.id,
                             status_msg.message_id,

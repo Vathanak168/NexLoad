@@ -5,19 +5,18 @@ Handles universal SQL storage (SQLite for local PC / PostgreSQL for cloud hostin
 Automatically migrates existing JSON data (licenses.json, stats.json, bot_users.json) on startup.
 """
 
+import json
 import os
 import sys
-import json
-import datetime
 import tempfile
 
 try:
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
-except Exception:
-    pass
+except Exception as e:
+    print(f"⚠️ [Error]: {e}")
 
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, BigInteger, Text
+from sqlalchemy import BigInteger, Boolean, Column, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 import config
@@ -75,7 +74,7 @@ class BotUserRecord(Base):
 
 
 # Setup Engine & Session
-db_url = getattr(config, "DATABASE_URL", None) or os.environ.get("DATABASE_URL")
+db_url = ""
 if not db_url:
     db_path = (
         os.environ.get("SQLITE_PATH")
@@ -100,14 +99,18 @@ def get_session():
 def init_db():
     """Create tables and auto-migrate existing JSON data if tables are empty."""
     Base.metadata.create_all(bind=engine)
-    try:
-        from sqlalchemy import text
-        with engine.connect() as conn:
-            conn.execute(text("ALTER TABLE licenses ADD COLUMN bound_email VARCHAR(128);"))
-            conn.commit()
-    except Exception:
-        pass
-
+    from sqlalchemy import inspect
+    inspector = inspect(engine)
+    if 'licenses' in inspector.get_table_names():
+        columns = [c['name'] for c in inspector.get_columns('licenses')]
+        if 'bound_email' not in columns:
+            try:
+                from sqlalchemy import text
+                with engine.connect() as conn:
+                    conn.execute(text("ALTER TABLE licenses ADD COLUMN bound_email VARCHAR(128);"))
+                    conn.commit()
+            except Exception as e:
+                print(f"⚠️ [Error]: {e}")
     session = get_session()
     try:
         # 1. Migrate licenses.json
@@ -151,8 +154,8 @@ def init_db():
                     stat_obj.total_bytes = sdata.get("total_bytes", 0)
                     stat_obj.by_platform = json.dumps(sdata.get("by_platform", {}))
                     stat_obj.by_day = json.dumps(sdata.get("by_day", {}))
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [Error]: {e}")
             session.add(stat_obj)
             session.commit()
 
@@ -166,8 +169,8 @@ def init_db():
                     for tid, lkey in bdata.items():
                         session.merge(BotUserRecord(telegram_id=str(tid), license_key=str(lkey)))
                     session.commit()
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [Error]: {e}")
     finally:
         session.close()
 

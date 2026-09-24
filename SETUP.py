@@ -3,7 +3,9 @@ NexLoad Icon Converter + First-Time Setup
 Run this once to convert the PNG icon to .ico format
 and generate a test license key.
 """
-import os, sys, subprocess
+import os
+import subprocess
+import sys
 
 BASE = os.path.dirname(os.path.abspath(__file__))
 
@@ -28,7 +30,7 @@ try:
         ico_path = os.path.join(BASE, 'nexload.ico')
         img.save(ico_path, format='ICO',
                  sizes=[(256,256),(128,128),(64,64),(48,48),(32,32),(16,16)])
-        print(f"  ✅ Icon saved: nexload.ico")
+        print("  ✅ Icon saved: nexload.ico")
     else:
         print("  ⚠️  No source PNG found — skipping icon conversion.")
         print("      Place nexload_icon.png next to this script and re-run.")
@@ -41,16 +43,16 @@ except Exception as e:
 print("\n  [2/3] Generating test license key...")
 try:
     sys.path.insert(0, BASE)
-    from license_manager import generate_key, TIERS
+    from license_manager import generate_key
 
     info = generate_key("Test User — Pro", "pro", 365)
     print("\n  ╔══════════════════════════════════════════════════╗")
     print("  ║         🔑  TEST LICENSE KEY GENERATED           ║")
     print("  ╠══════════════════════════════════════════════════╣")
     print(f"  ║  Key:     {info['key']:<39}║")
-    print(f"  ║  Tier:    Pro (365 days)                        ║")
+    print("  ║  Tier:    Pro (365 days)                        ║")
     print("  ╚══════════════════════════════════════════════════╝")
-    print(f"\n  📋 Copy this key and paste it in the NexLoad login screen:")
+    print("\n  📋 Copy this key and paste it in the NexLoad login screen:")
     print(f"\n     ➤  {info['key']}\n")
 
     # Save it to a readable text file
@@ -59,10 +61,10 @@ try:
         f.write(f"NexLoad License Key\n{'='*40}\n")
         f.write(f"Key:     {info['key']}\n")
         f.write(f"User:    {info['user']}\n")
-        f.write(f"Tier:    Pro\n")
+        f.write("Tier:    Pro\n")
         f.write(f"Expires: {info['expires'][:10]}\n")
-        f.write(f"\nKeep this file safe!\n")
-    print(f"  💾 Saved to: MY_LICENSE_KEY.txt")
+        f.write("\nKeep this file safe!\n")
+    print("  💾 Saved to: MY_LICENSE_KEY.txt")
 
 except Exception as e:
     print(f"  ❌ Could not generate key: {e}")

@@ -9,7 +9,6 @@ sScript = sDir & "\admin_panel\admin_server.py"
 
 ' Find pythonw or python
 On Error Resume Next
-Dim sPython
 sPython = oShell.Exec("cmd /c where pythonw.exe 2>nul").StdOut.ReadLine()
 If sPython = "" Then
     sPython = oShell.Exec("cmd /c where python.exe 2>nul").StdOut.ReadLine()

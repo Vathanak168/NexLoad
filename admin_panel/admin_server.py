@@ -1,6 +1,20 @@
-import os, json, datetime, hmac, hashlib, uuid
-from flask import Flask, render_template, request, jsonify, redirect, session
+import datetime
+import hashlib
+import hmac
+import json
+import os
+import uuid
+
+from flask import Flask, jsonify, redirect, render_template, request, session
 from werkzeug.security import check_password_hash
+
+try:
+    from dotenv import load_dotenv
+    BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+    PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
+    load_dotenv(os.path.join(PARENT_DIR, '.env'))
+except ImportError:
+    pass
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("ADMIN_SESSION_SECRET") or os.environ.get("SECRET_KEY") or os.urandom(32)
@@ -13,6 +27,7 @@ ADMIN_PASSWORD_HASH = os.environ.get("ADMIN_PASSWORD_HASH", "")
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 PARENT_DIR = os.path.abspath(os.path.join(BASE_DIR, '..'))
 import sys
+
 if PARENT_DIR not in sys.path:
     sys.path.insert(0, PARENT_DIR)
 import db as sql_db

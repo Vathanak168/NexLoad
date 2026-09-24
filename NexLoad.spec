@@ -1,39 +1,20 @@
 # -*- mode: python ; coding: utf-8 -*-
 
-block_cipher = None
 
 a = Analysis(
     ['main_desktop.py'],
     pathex=[],
     binaries=[],
-    datas=[
-        ('index.html', '.'),
-        ('style.css', '.'),
-        ('app.js', '.'),
-        ('nexload.ico', '.')
-    ],
-    hiddenimports=[
-        'flask',
-        'flask_cors',
-        'yt_dlp',
-        'requests',
-        'license_manager',
-        'config',
-        'server',
-        'telegram_bot',
-        'bot_key_manager',
-        'bot_downloader'
-    ],
+    datas=[('index.html', '.'), ('style.css', '.'), ('app.js', '.'), ('nexload.ico', '.')],
+    hiddenimports=['flask', 'flask_cors', 'yt_dlp', 'requests', 'license_manager', 'config', 'server', 'telegram_bot', 'bot_key_manager', 'bot_downloader'],
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
     excludes=[],
-    win_no_prefer_redirects=False,
-    win_private_assemblies=False,
-    cipher=block_cipher,
     noarchive=False,
+    optimize=0,
 )
-pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
+pyz = PYZ(a.pure)
 
 exe = EXE(
     pyz,
@@ -51,12 +32,11 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=['nexload.ico'],
+    icon=['C:/Users/U-ser/Desktop/AI_Tool/nexload.ico'],
 )
 coll = COLLECT(
     exe,
     a.binaries,
-    a.zipfiles,
     a.datas,
     strip=False,
     upx=True,

@@ -7,20 +7,24 @@ Modules:
   - bot_downloader: Direct video downloading from URLs
 """
 
-import os, sys
+import os
+import sys
+
 try:
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
 except Exception:
     pass
 
-import telebot
-import config
-import bot_key_manager
-import bot_downloader
-
-from telebot.types import BotCommand
 import time
+
+import telebot
+from telebot.types import BotCommand
+
+import bot_downloader
+import bot_key_manager
+import config
+
 
 def run_bot():
     """Initializes and starts the Telegram bot polling engine."""
@@ -66,7 +70,7 @@ def run_bot():
             try:
                 from telebot.types import BotCommandScopeChat
                 bot.set_my_commands(admin_commands, scope=BotCommandScopeChat(int(aid)))
-            except Exception as ex_scope:
+            except Exception:
                 pass
         print("✅ [Telegram Bot] Scoped command menus registered!")
     except Exception as e:

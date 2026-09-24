@@ -5,10 +5,9 @@ Handles universal SQL storage (SQLite for local PC / PostgreSQL for cloud hostin
 Automatically migrates existing JSON data (licenses.json, stats.json, bot_users.json) on startup.
 """
 
+import json
 import os
 import sys
-import json
-import datetime
 import tempfile
 
 try:
@@ -17,7 +16,7 @@ try:
 except Exception:
     pass
 
-from sqlalchemy import create_engine, Column, String, Integer, Boolean, BigInteger, Text
+from sqlalchemy import BigInteger, Boolean, Column, Integer, String, Text, create_engine
 from sqlalchemy.orm import declarative_base, sessionmaker
 
 import config

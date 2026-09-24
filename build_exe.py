@@ -6,7 +6,10 @@ Usage:
     python build_exe.py
 """
 
-import os, sys, subprocess, shutil
+import os
+import subprocess
+import sys
+
 try:
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')

@@ -10,11 +10,16 @@ Features:
   - Structured callback routing: "nav:", "tier:", "confirm:", "page:", "action:"
 """
 
-import os, json, time, datetime
+import datetime
+import json
+import os
+import time
+
+from telebot.types import InlineKeyboardButton, InlineKeyboardMarkup
+
 import config
-import license_manager
 import db
-from telebot.types import InlineKeyboardMarkup, InlineKeyboardButton
+import license_manager
 
 BOT_USERS_FILE = os.path.join(config.BASE_DIR, "bot_users.json")
 

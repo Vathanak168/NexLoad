@@ -7,6 +7,21 @@ const API = (window.location.protocol.startsWith('http'))
   ? `${window.location.origin}/api`
   : 'http://localhost:5000/api';
 
+function readStoredJson(key, fallback) {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? JSON.parse(raw) : fallback;
+  } catch {
+    localStorage.removeItem(key);
+    return fallback;
+  }
+}
+
+const defaultSettings = {
+  concurrent: 3, autoPaste: true, notifications: true,
+  speedLimit: '', subtitles: false, subLang: 'en', theme: 'light', autoDetectBar: false,
+};
+
 // ============================================================
 // STATE
 // ============================================================
@@ -14,16 +29,15 @@ const state = {
   currentPage: 'home',
   serverOnline: false,
   language: localStorage.getItem('nexload_lang') || 'en',
-  history: JSON.parse(localStorage.getItem('nexload_history') || '[]'),
-  settings: JSON.parse(localStorage.getItem('nexload_settings') || JSON.stringify({
-    concurrent: 3, autoPaste: true, notifications: true,
-    speedLimit: '', subtitles: false, subLang: 'en', theme: 'dark', autoDetectBar: false,
-  })),
+  history: readStoredJson('nexload_history', []),
+  favorites: readStoredJson('nexload_favorites', []),
+  settings: { ...defaultSettings, ...readStoredJson('nexload_settings', {}) },
   licenseKey: localStorage.getItem('nexload_license') || null,
   licenseEmail: localStorage.getItem('nexload_email') || null,
   licenseInfo: null,
   queue: [],   // active downloads queue
   queuePanelOpen: false,
+  preferredMode: null,
 };
 
 function authHeaders(extra = {}) {
@@ -158,6 +172,7 @@ const platformMap = {
   instagram: { urlId: 'ig-url', btnId: 'ig-analyze-btn', resultId: 'ig-result', chipGroupId: 'ig-quality-chips' },
   pinterest: { urlId: 'pi-url', btnId: 'pi-analyze-btn', resultId: 'pi-result', chipGroupId: 'pi-quality-chips' },
   pexels: { urlId: 'px-url', btnId: 'px-analyze-btn', resultId: 'px-result', chipGroupId: 'px-quality-chips' },
+  universal: { urlId: 'uni-url', btnId: 'uni-analyze-btn', resultId: 'uni-result', chipGroupId: 'uni-quality-chips' },
 };
 const platformEmoji = { youtube: '📺', tiktok: '🎵', facebook: '📘', instagram: '📸', pinterest: '📌', pexels: '📸' };
 const platformColors = { youtube: '#ff0033', tiktok: '#00f0ea', facebook: '#1877f2', instagram: '#e1306c', pinterest: '#e60023', pexels: '#05a081' };
@@ -172,6 +187,8 @@ async function checkServer() {
     const d = await readApiJson(res);
     setServerStatus(d.ok === true);
     if (d.dir) state.downloadDir = d.dir;
+    const versionEl = document.getElementById('settings-version');
+    if (versionEl && d.version) versionEl.textContent = `Backend v${d.version}`;
     initGoogleSignIn(d.google_client_id);
   } catch {
     setServerStatus(false);
@@ -258,13 +275,14 @@ function backToStep1() {
 function setServerStatus(online) {
   state.serverOnline = online;
   const badge = document.getElementById('serverBadge');
-  if (!badge) return;
-  if (online) {
-    badge.textContent = t('serverOn');
-    badge.className = 'server-badge server-online';
-  } else {
-    badge.textContent = t('serverOff');
-    badge.className = 'server-badge server-offline';
+  if (badge) {
+    badge.textContent = online ? t('serverOn') : t('serverOff');
+    badge.className = `server-badge ${online ? 'server-online' : 'server-offline'}`;
+  }
+  const settingsBadge = document.getElementById('settings-server-status');
+  if (settingsBadge) {
+    settingsBadge.textContent = online ? t('serverOn') : t('serverOff');
+    settingsBadge.className = `server-badge ${online ? 'server-online' : 'server-offline'}`;
   }
 }
 
@@ -276,16 +294,13 @@ setInterval(checkServer, 5000);
 // ============================================================
 async function submitLicense() {
   const input = document.getElementById('licenseKeyInput');
+  const emailInput = document.getElementById('loginEmailInput');
   const errorEl = document.getElementById('loginError');
   const btn = document.getElementById('loginBtn');
   const key = (input?.value || '').trim().toUpperCase();
-  const email = window.verifiedSSOEmail || state.licenseEmail || '';
+  const email = (window.verifiedSSOEmail || emailInput?.value || state.licenseEmail || '').trim().toLowerCase();
 
-  if (!email || !email.includes('@')) {
-    if (errorEl) errorEl.textContent = 'Please complete Gmail verification first.';
-    return;
-  }
-  if (!key || key.length < 10) {
+  if (!key || key.length < 8) {
     if (errorEl) errorEl.textContent = 'Please enter a valid license key.';
     return;
   }
@@ -293,10 +308,6 @@ async function submitLicense() {
   btn.disabled = true;
   btn.textContent = 'Validating...';
   if (errorEl) errorEl.textContent = '';
-
-  if (!state.serverOnline) {
-    await checkServer();
-  }
 
   try {
     const res = await fetch(`${API}/auth/validate`, {
@@ -308,12 +319,14 @@ async function submitLicense() {
 
     if (data.valid) {
       localStorage.setItem('nexload_license', key);
-      localStorage.setItem('nexload_email', email);
+      const savedEmail = email || data.bound_email || '';
+      if (savedEmail) localStorage.setItem('nexload_email', savedEmail);
       state.licenseKey = key;
-      state.licenseEmail = email;
+      state.licenseEmail = savedEmail;
       state.licenseInfo = data;
+      document.documentElement.classList.add('has-license');
       hideLicenseOverlay();
-      showToast(`✅ Welcome, ${data.user}! Bound to ${data.bound_email || email}`, 'success');
+      showToast(`✅ Welcome, ${data.user}! License activated.`, 'success');
       updateLicenseInfoBox(data);
     } else {
       if (errorEl) errorEl.textContent = '❌ ' + (data.reason || 'Invalid key');
@@ -324,10 +337,11 @@ async function submitLicense() {
   }
 
   btn.disabled = false;
-  btn.textContent = 'Activate & Link';
+  btn.textContent = 'Activate & Continue →';
 }
 
 function hideLicenseOverlay() {
+  document.documentElement.classList.add('has-license');
   const overlay = document.getElementById('loginOverlay');
   if (overlay) {
     overlay.style.opacity = '0';
@@ -339,16 +353,19 @@ function hideLicenseOverlay() {
 async function checkCachedLicense() {
   const key = state.licenseKey;
   const email = state.licenseEmail;
-  if (!key && !email) return false;
-  // Wait for server to be online
-  await checkServer();
-  if (!state.serverOnline) {
-    hideLicenseOverlay();
-    showToast('⚠️ Running in offline mode. Connect server to validate license.', 'info');
-    return true;
+  if (!key) {
+    document.documentElement.classList.remove('has-license');
+    const overlay = document.getElementById('loginOverlay');
+    if (overlay) {
+      overlay.classList.remove('hidden');
+      overlay.style.opacity = '1';
+    }
+    return false;
   }
 
-  if (!key) return false;
+  // License exists: keep overlay hidden immediately
+  hideLicenseOverlay();
+
   try {
     const res = await fetch(`${API}/auth/validate`, {
       method: 'POST',
@@ -358,21 +375,35 @@ async function checkCachedLicense() {
     const data = await readApiJson(res);
     if (data.valid) {
       state.licenseInfo = data;
-      hideLicenseOverlay();
+      if (data.bound_email && !state.licenseEmail) {
+        state.licenseEmail = data.bound_email;
+        localStorage.setItem('nexload_email', data.bound_email);
+      }
       updateLicenseInfoBox(data);
       return true;
     }
     
-    localStorage.removeItem('nexload_license');
-    localStorage.removeItem('nexload_email');
-    state.licenseKey = null;
-    state.licenseEmail = null;
-    const errEl = document.getElementById('loginError1') || document.getElementById('loginError');
-    if (errEl) errEl.textContent = '❌ ' + (data.reason || 'License verification failed');
-    return false;
+    // Only logout if explicitly revoked or expired
+    if (data.reason && (data.reason.includes('revoked') || data.reason.includes('expired') || data.reason.includes('banned'))) {
+      localStorage.removeItem('nexload_license');
+      localStorage.removeItem('nexload_email');
+      state.licenseKey = null;
+      state.licenseEmail = null;
+      document.documentElement.classList.remove('has-license');
+      const errEl = document.getElementById('loginError1') || document.getElementById('loginError');
+      if (errEl) errEl.textContent = '❌ ' + data.reason;
+
+      const overlay = document.getElementById('loginOverlay');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.style.opacity = '1';
+      }
+      return false;
+    }
+    return true;
   } catch {
-    hideLicenseOverlay();
-    return false;
+    // Offline or server starting up: retain session
+    return true;
   }
 }
 
@@ -400,25 +431,46 @@ function updateLicenseInfoBox(info) {
 
 function logout() {
   localStorage.removeItem('nexload_license');
+  localStorage.removeItem('nexload_email');
   state.licenseKey = null;
+  state.licenseEmail = null;
   state.licenseInfo = null;
-  document.getElementById('licenseKeyInput').value = '';
-  document.getElementById('loginError').textContent = '';
-  document.getElementById('loginOverlay').classList.remove('hidden');
-  document.getElementById('loginOverlay').style.opacity = '1';
+  window.verifiedSSOEmail = '';
+  window.verifiedSSOToken = '';
+  document.documentElement.classList.remove('has-license');
+  try { fetch(`${API}/auth/logout`, { method: 'POST' }); } catch {}
+  const keyInput = document.getElementById('licenseKeyInput');
+  if (keyInput) keyInput.value = '';
+  const loginError = document.getElementById('loginError');
+  if (loginError) loginError.textContent = '';
+  const step2 = document.getElementById('step2Key');
+  if (step2) step2.style.display = 'none';
+  const step1 = document.getElementById('step1Google');
+  if (step1) step1.style.display = 'block';
+  const overlay = document.getElementById('loginOverlay');
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.style.opacity = '1';
+  }
   showToast('Logged out. Please enter your license key.', 'info');
-  // Refresh HWID
-  submitLicense(); 
 }
 
 // Ensure HWID is fetched when app opens if there's no cached license
-setTimeout(() => {
+setTimeout(async () => {
   if (state.licenseKey) {
-    checkCachedLicense();
+    await checkCachedLicense();
   } else {
-    submitLicense();
+    const restored = await checkLocalServerLicense();
+    if (!restored) {
+      document.documentElement.classList.remove('has-license');
+      const overlay = document.getElementById('loginOverlay');
+      if (overlay) {
+        overlay.classList.remove('hidden');
+        overlay.style.opacity = '1';
+      }
+    }
   }
-}, 1000);
+}, 400);
 
 // Enter key on license input
 document.getElementById('licenseKeyInput')?.addEventListener('keydown', e => {
@@ -433,29 +485,23 @@ function navigateTo(pageId) {
   const target = document.getElementById('page-' + pageId);
   if (target) {
     target.classList.add('active');
-    if (pageId !== 'home') {
-      let backBar = target.querySelector('.subpage-back-bar');
-      if (!backBar) {
-        backBar = document.createElement('div');
-        backBar.className = 'subpage-back-bar';
-        backBar.innerHTML = `
-          <button class="btn-subpage-back" onclick="navigateTo('home')">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="19" y1="12" x2="5" y2="12"/><polyline points="12 19 5 12 12 5"/></svg>
-            Back to Command Console
-          </button>
-        `;
-        target.insertBefore(backBar, target.firstChild);
-      }
-    }
+    // Logic for subpage back bar is removed to match Figma UI
   }
   document.querySelectorAll('.nav-tab').forEach(tab =>
     tab.classList.toggle('active', tab.dataset.page === pageId)
   );
+  document.querySelectorAll('.sidebar-item[data-page]').forEach(item =>
+    item.classList.toggle('active', item.dataset.page === pageId)
+  );
   const navBackBtn = document.getElementById('navBackBtn');
   if (navBackBtn) navBackBtn.style.display = (pageId === 'home') ? 'none' : 'inline-flex';
   state.currentPage = pageId;
+  if (pageId === 'home') state.preferredMode = null;
+  const scroller = document.querySelector('.main-content');
+  if (scroller) scroller.scrollTo({ top: 0, behavior: 'smooth' });
   if (pageId === 'stats' && typeof loadStats === 'function') loadStats();
   if (pageId === 'settings' && typeof refreshFolderDisplay === 'function') refreshFolderDisplay();
+  if (pageId === 'favorites' && typeof renderFavorites === 'function') renderFavorites();
 }
 
 document.querySelectorAll('.nav-tab').forEach(tab =>
@@ -511,7 +557,8 @@ const platformUrlPatterns = {
 function validatePlatformUrl(platform, url) {
   const patterns = platformUrlPatterns[platform];
   if (!patterns) return true; // Default to allow if platform not defined in list
-  return patterns.some(p => p.test(url));
+  const normalizedUrl = String(url || '').toLowerCase();
+  return patterns.some(p => p.test(normalizedUrl));
 }
 
 async function analyzeUrl(platform) {
@@ -666,7 +713,6 @@ function buildResultCard(platform, url, info) {
   const doneId = `done-${ts}`;
   const cardId = `card-${ts}`;
 
-  // Platforms that support image download
   const imageCapablePlatforms = ['instagram', 'pinterest', 'tiktok', 'facebook', 'pexels', 'universal'];
   const supportsImage = imageCapablePlatforms.includes(platform);
   const isImagePost = !!(info?.isImagePost);
@@ -676,7 +722,7 @@ function buildResultCard(platform, url, info) {
   // ── Quality setup ──────────────────────────────────────────────
   const fmts = info?.formats || [];
   const maxHeight = info?.max_height || (fmts[0]?.height) || 0;
-  const defaultMode = isImagePost ? 'image' : 'video';
+  const defaultMode = isImagePost ? 'image' : (state.preferredMode === 'audio' && fmts.length ? 'audio' : 'video');
   const defaultH    = isImagePost ? 'image' : (fmts.length ? String(fmts[0].height) : '1080');
 
   // Helper: map height → short display label for badge & button
@@ -686,26 +732,33 @@ function buildResultCard(platform, url, info) {
     if (n >= 4320) return '8K';
     if (n >= 2160) return '4K';
     if (n >= 1440) return '2K';
-    // 1080–1439: show exact pixels (e.g. 1280p, 1080p — no misleading tier label)
     return n + 'p';
   }
 
-  // MAX badge  — shown top-right of result card
   const maxLabel = qShortLabel(maxHeight);
-  const isUltraHD = maxHeight >= 2160;
   const maxBadge = maxHeight
-    ? `<span class="max-quality-badge${isUltraHD ? ' max-quality-ultra' : ''}">${isUltraHD ? '🏆' : '⭐'} MAX: ${maxLabel}</span>`
+    ? `<span class="nrc-max-badge">⭐ MAX QUALITY: ${maxLabel}</span>`
     : '';
 
   // Quality buttons — auto-select first (highest)
   const firstQualityLabel = fmts.length ? qShortLabel(fmts[0].height) : '1080p';
   const qualBtns = [
     ...fmts.map((f, i) =>
-      `<button class="dyn-q-btn${!isImagePost && i === 0 ? ' active' : ''}" data-h="${f.height}" data-short="${qShortLabel(f.height)}" onclick="selectQuality(this,'${cardId}')">${f.label}</button>`
+      `<div class="nrc-q-box${defaultMode === 'video' && i === 0 ? ' active' : ''}" data-h="${f.height}" data-short="${qShortLabel(f.height)}" onclick="selectQuality(this,'${cardId}')">
+         <div class="nrc-q-main">${qShortLabel(f.height)}</div>
+         <div class="nrc-q-sub">${f.label}</div>
+         ${i === 0 ? '<div class="nrc-q-best-badge">⭐ Best Quality</div>' : ''}
+       </div>`
     ),
-    `<button class="dyn-q-btn dyn-q-audio" data-h="audio" data-short="Audio" onclick="selectQuality(this,'${cardId}')">&#127925; Audio Only</button>`,
+    `<div class="nrc-q-box nrc-audio-box${defaultMode === 'audio' ? ' active' : ''}" data-h="audio" data-short="Audio" onclick="selectQuality(this,'${cardId}')">
+       <div class="nrc-q-main">&#127925; MP3</div>
+       <div class="nrc-q-sub">Audio Only</div>
+     </div>`,
     supportsImage
-      ? `<button class="dyn-q-btn dyn-q-image${isImagePost ? ' active' : ''}" data-h="image" data-short="Image" onclick="selectQuality(this,'${cardId}')">&#128247; Image</button>`
+      ? `<div class="nrc-q-box nrc-image-box${isImagePost ? ' active' : ''}" data-h="image" data-short="Image" onclick="selectQuality(this,'${cardId}')">
+           <div class="nrc-q-main">&#128247; Thumbnail</div>
+           <div class="nrc-q-sub">Image</div>
+         </div>`
       : ''
   ].join('');
 
@@ -727,13 +780,14 @@ function buildResultCard(platform, url, info) {
   // Use slideshow cover or fallback thumbnail
   const thumbUrl = info?.imageInfo?.thumbnail || info?.thumbnail;
   const thumb = thumbUrl
-    ? `<img src="${escapeHtml(thumbUrl)}" alt="thumb" class="result-real-thumb" />`
-    : `<div class="result-thumbnail-placeholder" style="background:linear-gradient(135deg,${color}22,${color}11);font-size:2.8rem">${emoji}</div>`;
+    ? `<img src="${escapeHtml(thumbUrl)}" alt="thumb" class="nrc-thumb" />`
+    : `<div class="nrc-thumb" style="background:linear-gradient(135deg,${color}22,${color}11);display:flex;align-items:center;justify-content:center;font-size:3rem">${emoji}</div>`;
 
-  const durTag   = info?.duration ? `<span class="result-tag">&#9201; ${escapeHtml(info.duration)}</span>` : '';
-  const viewsTag = info?.views    ? `<span class="result-tag">&#128065; ${escapeHtml(info.views)}</span>`   : '';
+  const durTag = info?.duration ? escapeHtml(info.duration) : '';
+  const viewsTag = info?.views ? escapeHtml(info.views) : '-';
+  const reactTag = info?.likes || info?.reactions ? escapeHtml(info.likes || info.reactions) : '-';
 
-  // Initial download button label — shows selected quality
+  // Initial download button label
   let initDlLabel = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg> Download ${firstQualityLabel}`;
   if (isPlaylist) {
     initDlLabel = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/><line x1="19" y1="5" x2="19" y2="19"/></svg> Download All (${playCount})`;
@@ -742,7 +796,7 @@ function buildResultCard(platform, url, info) {
   }
 
   return `
-    <div class="video-result-card result-card" id="${cardId}"
+    <div class="new-result-card result-card" id="${cardId}"
       data-url="${escapeHtml(url)}"
       data-platform="${platform}"
       data-quality="${defaultH}"
@@ -750,21 +804,7 @@ function buildResultCard(platform, url, info) {
 
       ${imageNoticeBanner}
 
-      <div class="result-inner">
-        ${thumb}
-        <div class="result-details">
-          <div class="result-title-row">
-            <div class="result-title">${escapeHtml(info?.title || 'Video')}</div>
-            ${maxBadge}
-          </div>
-          <div class="result-meta">
-            ${info?.channel ? `<span class="result-tag">&#128100; ${escapeHtml(info.channel)}</span>` : ''}
-            ${durTag} ${viewsTag}
-          </div>
-        </div>
-      </div>
-
-      <!-- Slideshow Grid (TikTok) -->
+      <!-- Slideshow Grid -->
       ${(() => {
         const imgs = info?.imageInfo?.images;
         const isSlideshow = info?.imageInfo?.type === 'slideshow' && imgs && imgs.length > 0;
@@ -790,48 +830,104 @@ function buildResultCard(platform, url, info) {
           <div class="slideshow-grid" id="grid-${cardId}">${slideItems}</div>`;
       })()}
 
-      <!-- Dynamic Quality Bar -->
-      <div class="dyn-quality-bar">
-        <span class="dyn-q-label">&#127919; Quality:</span>
-        <div class="dyn-q-btns">${qualBtns}</div>
+      <div class="nrc-top">
+        <div class="nrc-thumb-wrapper">
+          ${thumb}
+          <div class="nrc-play-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="white" stroke="white" stroke-width="2" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"/></svg></div>
+          ${durTag ? `<div class="nrc-duration-badge">${durTag}</div>` : ''}
+        </div>
+
+        <div class="nrc-info">
+          <div class="nrc-title-row">
+            <h3 class="nrc-title result-title">${escapeHtml(info?.title?.substring(0, 60) || 'Video Download')}</h3>
+            ${maxBadge}
+          </div>
+          <div class="nrc-subtitle">
+            ${viewsTag !== '-' ? `${viewsTag} views • ` : ''}${reactTag !== '-' ? `${reactTag} reactions • ` : ''}Just now
+          </div>
+
+          <div class="nrc-stats-grid">
+            <div class="nrc-stat-box">
+              <div class="nrc-stat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+              <div>
+                <div class="nrc-stat-val">${viewsTag}</div>
+                <div class="nrc-stat-label">Views</div>
+              </div>
+            </div>
+            <div class="nrc-stat-box">
+              <div class="nrc-stat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3zM7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg></div>
+              <div>
+                <div class="nrc-stat-val">${reactTag}</div>
+                <div class="nrc-stat-label">Reactions</div>
+              </div>
+            </div>
+            <div class="nrc-stat-box">
+              <div class="nrc-stat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></div>
+              <div>
+                <div class="nrc-stat-val">${durTag || '0:00'}</div>
+                <div class="nrc-stat-label">Duration</div>
+              </div>
+            </div>
+            <div class="nrc-stat-box">
+              <div class="nrc-stat-icon"><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg></div>
+              <div>
+                <div class="nrc-stat-val" id="size-val-${cardId}">-- MB</div>
+                <div class="nrc-stat-label">Size (DL)</div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
-      <!-- Download Button -->
-      <div class="result-actions" style="margin-top:14px">
-        ${(() => {
-          const imgs = info?.imageInfo?.images;
-          const isSlideshow = info?.imageInfo?.type === 'slideshow' && imgs && imgs.length > 0;
-          if (isSlideshow) {
-            return `<button class="download-btn download-btn-image" id="dlbtn-${ts}"
-              onclick="startDownloadFromCard('${cardId}','dlbtn-${ts}','${progId}','${doneId}')">
-              &#128247; Download Selected (<span id="dl-count-${cardId}">${imgs.length}</span>)
-            </button>`;
-          }
-          return `<button class="download-btn${isImagePost ? ' download-btn-image' : ''}" id="dlbtn-${ts}"
-            onclick="startDownloadFromCard('${cardId}','dlbtn-${ts}','${progId}','${doneId}')">
+      <div class="nrc-quality-section">
+        <div class="nrc-quality-title">DOWNLOAD QUALITY</div>
+        <div class="nrc-q-grid">
+          ${qualBtns}
+        </div>
+      </div>
+
+      <div style="display:flex; justify-content:center; align-items:center; margin-top: -8px;">
+         <button class="nrc-btn primary download-btn" id="dlbtn-${ts}" onclick="startDownloadFromCard('${cardId}','dlbtn-${ts}','${progId}','${doneId}')" style="width: 100%; justify-content: center; padding: 14px; font-size: 1rem;">
             ${initDlLabel}
-          </button>`;
-        })()}
+         </button>
+      </div>
+      <div id="${progId}" style="display:none; width: 100%; margin-top: 8px;">
+          <div style="display:flex; justify-content:space-between; font-size:0.8rem; font-weight:bold; color:#64748b; margin-bottom:4px;">
+              <span id="${progId}-label">Downloading...</span>
+              <span id="${progId}-pct" style="color:#6366f1">0%</span>
+          </div>
+          <div style="width:100%; background:#e2e8f0; border-radius:4px; height:6px; overflow:hidden;">
+              <div id="${progId}-fill" style="width:0%; height:100%; background:linear-gradient(90deg, #6366f1, #8b5cf6); transition: width 0.3s;"></div>
+          </div>
       </div>
 
-      <!-- Progress -->
-      <div class="progress-wrap" id="${progId}">
-        <div class="progress-label">
-          <span id="${progId}-label">Starting...</span>
-          <span id="${progId}-pct" style="color:var(--grad-mid);font-weight:700">0%</span>
+      <div class="nrc-success-banner" id="${doneId}" style="display:none">
+        <div class="nrc-success-left">
+          <div class="nrc-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+          <div>
+            <div class="nrc-success-title">Download Complete!</div>
+            <div class="nrc-success-sub">${escapeHtml(info?.title?.substring(0,35) || 'Video')}.mp4 • <span id="${doneId}-size">-- MB</span></div>
+          </div>
         </div>
-        <div class="progress-track">
-          <div class="progress-fill" id="${progId}-fill" style="width:0%"></div>
+        <div class="nrc-success-actions">
+          <button class="nrc-btn primary" onclick="openFolder()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg> Open File
+          </button>
+          <button class="nrc-btn" onclick="openFolder()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Open Folder
+          </button>
+          <button class="nrc-btn" onclick="openFolder()">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share
+          </button>
+          <button class="nrc-btn" style="padding: 10px;">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+          </button>
         </div>
-        <div class="progress-meta" id="${progId}-meta"></div>
       </div>
 
-      <!-- Done -->
-      <div class="download-done-row" id="${doneId}" style="display:none">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-          stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-        &#9989; Downloaded! Saved to Downloads/NexLoad/
-        <button class="open-folder-btn" onclick="openFolder()">&#128194; Open Folder</button>
+      <div class="footer-text">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>
+        We do not store any videos on our servers. All downloads are temporary.
       </div>
     </div>`;
 }
@@ -840,7 +936,7 @@ function buildResultCard(platform, url, info) {
 function selectQuality(btn, cardId) {
   const card = document.getElementById(cardId);
   if (!card) return;
-  card.querySelectorAll('.dyn-q-btn').forEach(b => b.classList.remove('active'));
+  card.querySelectorAll('.nrc-q-box').forEach(b => b.classList.remove('active'));
   btn.classList.add('active');
   card.dataset.quality = btn.dataset.h;
   const shortLabel = btn.dataset.short || btn.dataset.h;  // e.g. "4K", "1080p", "Audio", "Image"
@@ -854,7 +950,7 @@ function selectQuality(btn, cardId) {
     card.dataset.mode = 'video';
   }
 
-  // Update download button label + color to reflect chosen mode/quality
+  // Update download button label
   const dlBtn = card.querySelector('.download-btn');
   if (dlBtn && !dlBtn.disabled) {
     const dlSvg = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg>`;
@@ -863,20 +959,14 @@ function selectQuality(btn, cardId) {
 
     if (card.dataset.mode === 'image') {
       dlBtn.innerHTML = `${imgSvg} Download Image`;
-      dlBtn.style.background  = 'linear-gradient(135deg,#10b981,#059669)';
-      dlBtn.style.boxShadow   = '0 4px 24px rgba(16,185,129,0.3)';
     } else if (card.dataset.mode === 'audio') {
       dlBtn.innerHTML = `${audSvg} Download Audio`;
-      dlBtn.style.background  = 'linear-gradient(135deg,#f59e0b,#d97706)';
-      dlBtn.style.boxShadow   = '0 4px 24px rgba(245,158,11,0.3)';
     } else {
       if (shortLabel.includes('Download All')) {
         dlBtn.innerHTML = `${dlSvg} ${shortLabel}`;
       } else {
         dlBtn.innerHTML = `${dlSvg} Download ${shortLabel}`;
       }
-      dlBtn.style.background  = '';
-      dlBtn.style.boxShadow   = '';
     }
   }
 }
@@ -1064,25 +1154,35 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
           if (progWrap) progWrap.classList.remove('visible');
           if (doneLine) {
             doneLine.style.display = 'flex';
-            doneLine.style.flexWrap = 'wrap';
-            doneLine.style.gap = '8px';
             const fn = escapeHtml(task.filename || 'video.mp4');
             const tToken = (state.taskTokens && state.taskTokens[task_id]) ? ('?token=' + encodeURIComponent(state.taskTokens[task_id])) : '';
             doneLine.innerHTML = `
-              <div style="width:100%;font-weight:700;color:#10b981;display:flex;align-items:center;gap:6px;margin-bottom:4px">
-                ✅ Complete: <span style="color:#f8fafc;font-weight:600">${fn}</span>
+              <div class="nrc-success-left">
+                <div class="nrc-success-icon"><svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></div>
+                <div>
+                  <div class="nrc-success-title">Download Complete!</div>
+                  <div class="nrc-success-sub">${fn} • <span>${task.size || '-- MB'}</span></div>
+                </div>
               </div>
-              <a href="${API}/file/${task_id}${tToken}" class="open-folder-btn" download style="text-decoration:none;display:inline-flex;align-items:center;gap:6px;background:var(--grad-mid);color:#fff;font-weight:600">
-                📥 Download File
-              </a>
-              <button class="open-folder-btn" onclick="shareOrSaveToPhotos('${API}/file/${task_id}${tToken}', '${fn}')" style="display:inline-flex;align-items:center;gap:6px;background:#38bdf8;color:#000;font-weight:700">
-                📱 Save to Photos / Share
-              </button>
-              <button class="open-folder-btn" onclick="openFolder()">📁 Open Folder</button>
+              <div class="nrc-success-actions">
+                <a href="${API}/file/${task_id}${tToken}" download class="nrc-btn primary" style="text-decoration:none;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><polyline points="13 2 13 9 20 9"/></svg> Open File
+                </a>
+                <button class="nrc-btn" onclick="openFolder()">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg> Open Folder
+                </button>
+                <button class="nrc-btn" onclick="shareOrSaveToPhotos('${API}/file/${task_id}${tToken}', '${fn}')" title="Share">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="18" cy="5" r="3"/><circle cx="6" cy="12" r="3"/><circle cx="18" cy="19" r="3"/><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"/><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"/></svg> Share
+                </button>
+                <button class="nrc-btn" style="padding: 10px;">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="1"/><circle cx="12" cy="5" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+                </button>
+              </div>
             `;
           }
         }, 600);
         addToHistory({
+          url,
           platform: detectPlatform(url),
           title: task.filename || 'Video',
           quality: mode === 'audio' ? 'MP3 Audio' : mode === 'image' ? 'Image' : quality + 'p',
@@ -1111,7 +1211,15 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
 
     evtSrc.onerror = () => {
       evtSrc.close();
-      // Server might have finished — check once more
+      // Server might have finished or connection lost
+      setTimeout(() => {
+        if (btn.disabled) {
+          if (progWrap) progWrap.classList.remove('visible');
+          btn.disabled = false;
+          btn.innerHTML = `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="8 17 12 21 16 17"/><line x1="12" y1="21" x2="12" y2="9"/><path d="M20.88 18.09A5 5 0 0 0 18 9h-1.26A8 8 0 1 0 3 16.29"/></svg> Retry`;
+          showToast('Connection lost. Please retry.', 'error');
+        }
+      }, 3000);
     };
 
   } catch (err) {
@@ -1127,7 +1235,10 @@ async function startDownload(url, quality, mode, btnId, progId, doneId, cardId, 
 // ============================================================
 async function openFolder() {
   try {
-    await fetch(`${API}/open-folder`, { method: 'POST', headers: authHeaders() });
+    const res = await fetch(`${API}/open-folder`, { method: 'POST', headers: authHeaders() });
+    const data = await readApiJson(res);
+    if (!res.ok || data.error) throw new Error(data.error || `HTTP ${res.status}`);
+    showToast('📂 Download folder opened', 'success');
   } catch {
     showToast('Could not open folder. Navigate to Downloads/NexLoad/ manually.', 'info');
   }
@@ -1176,12 +1287,13 @@ function setProgress(fill, label, pct, value, text) {
 // DETECT PLATFORM FROM URL
 // ============================================================
 function detectPlatform(url) {
-  if (url.includes('youtube') || url.includes('youtu.be')) return 'youtube';
-  if (url.includes('tiktok')) return 'tiktok';
-  if (url.includes('facebook') || url.includes('fb.watch')) return 'facebook';
-  if (url.includes('instagram')) return 'instagram';
-  if (url.includes('pinterest')) return 'pinterest';
-  if (url.includes('pexels')) return 'pexels';
+  const value = String(url || '').toLowerCase();
+  if (value.includes('youtube') || value.includes('youtu.be')) return 'youtube';
+  if (value.includes('tiktok')) return 'tiktok';
+  if (value.includes('facebook') || value.includes('fb.watch')) return 'facebook';
+  if (value.includes('instagram')) return 'instagram';
+  if (value.includes('pinterest')) return 'pinterest';
+  if (value.includes('pexels')) return 'pexels';
   return 'universal';
 }
 
@@ -1215,6 +1327,55 @@ function addToHistory(item) {
   updateHistoryCount();
 }
 
+function favoriteKey(item) {
+  return item?.url || `${item?.title || ''}|${item?.date || ''}`;
+}
+
+function isFavorite(item) {
+  const key = favoriteKey(item);
+  return state.favorites.some(item => favoriteKey(item) === key);
+}
+
+function toggleFavorite(historyIndex) {
+  const item = state.history[historyIndex];
+  if (!item) return;
+  const key = favoriteKey(item);
+  if (isFavorite(item)) {
+    state.favorites = state.favorites.filter(saved => favoriteKey(saved) !== key);
+    showToast('Removed from Favorites', 'info');
+  } else {
+    state.favorites.unshift({ ...item });
+    showToast('⭐ Added to Favorites', 'success');
+  }
+  localStorage.setItem('nexload_favorites', JSON.stringify(state.favorites));
+  renderHistory();
+  renderFavorites();
+}
+
+function renderFavorites() {
+  const list = document.getElementById('favoritesList');
+  const count = document.getElementById('favoritesCount');
+  if (count) count.textContent = state.favorites.length;
+  if (!list) return;
+  if (!state.favorites.length) {
+    list.innerHTML = `<div class="empty-state"><div class="empty-icon">⭐</div><p>No favorites yet. Star a download from Recent Downloads.</p><button class="empty-action" onclick="navigateTo('home')">Browse downloads</button></div>`;
+    return;
+  }
+  list.innerHTML = state.favorites.map((item, index) => `<div class="recent-item favorite-item">
+    <div class="recent-item-icon" style="background:${platformColors[item.platform] || '#8b5cf6'}18;border:1px solid ${platformColors[item.platform] || '#8b5cf6'}33;font-size:1.2rem">${item.emoji || '🎬'}</div>
+    <div class="recent-item-info"><div class="recent-item-title">${escapeHtml(item.title || 'Saved download')}</div><div class="recent-item-meta">${escapeHtml(item.platform || 'Universal')} • ${escapeHtml(item.quality || 'Best')} • ${formatDate(item.date)}</div></div>
+    <button class="recent-favorite active" onclick="removeFavorite(${index})" aria-label="Remove from favorites">★</button>
+  </div>`).join('');
+}
+
+function removeFavorite(index) {
+  state.favorites.splice(index, 1);
+  localStorage.setItem('nexload_favorites', JSON.stringify(state.favorites));
+  renderFavorites();
+  renderHistory();
+  showToast('Removed from Favorites', 'info');
+}
+
 function renderHistory() {
   const list = document.getElementById('recentList');
   const drawerList = document.getElementById('drawerHistoryList');
@@ -1228,13 +1389,14 @@ function renderHistory() {
     return;
   }
 
-  const html = state.history.slice(0, 10).map(item => `
+  const html = state.history.slice(0, 10).map((item, index) => `
     <div class="recent-item">
       <div class="recent-item-icon" style="background:${platformColors[item.platform] || '#a855f7'}22;border:1px solid ${platformColors[item.platform] || '#a855f7'}33;font-size:1.2rem">${item.emoji}</div>
       <div class="recent-item-info">
         <div class="recent-item-title">${escapeHtml(item.title)}</div>
         <div class="recent-item-meta">${item.platform.charAt(0).toUpperCase() + item.platform.slice(1)} • ${item.quality} • ${formatDate(item.date)}</div>
       </div>
+      <button class="recent-favorite${isFavorite(item) ? ' active' : ''}" onclick="toggleFavorite(${index})" aria-label="${isFavorite(item) ? 'Remove from favorites' : 'Add to favorites'}">${isFavorite(item) ? '★' : '☆'}</button>
       <div class="recent-item-size">✅</div>
     </div>`).join('');
 
@@ -1252,7 +1414,7 @@ function formatDate(iso) {
   return d.toLocaleDateString() + ' ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 }
 
-document.getElementById('clearHistoryBtn').addEventListener('click', () => {
+document.getElementById('clearHistoryBtn')?.addEventListener('click', () => {
   state.history = [];
   localStorage.removeItem('nexload_history');
   renderHistory();
@@ -1263,8 +1425,22 @@ document.getElementById('clearHistoryBtn').addEventListener('click', () => {
 // ============================================================
 // HISTORY DRAWER
 // ============================================================
-function toggleHistory() { document.getElementById('historyDrawer').classList.toggle('open'); }
-document.getElementById('historyBtn').addEventListener('click', toggleHistory);
+function toggleHistory() {
+  const drawer = document.getElementById('historyDrawer');
+  if (!drawer) return;
+  const open = !drawer.classList.contains('open');
+  drawer.classList.toggle('open', open);
+  drawer.setAttribute('aria-hidden', String(!open));
+  if (open) drawer.querySelector('.drawer-close')?.focus();
+}
+document.getElementById('historyBtn')?.addEventListener('click', toggleHistory);
+document.addEventListener('keydown', event => {
+  if (event.key !== 'Escape') return;
+  const drawer = document.getElementById('historyDrawer');
+  if (drawer?.classList.contains('open')) toggleHistory();
+  const queue = document.getElementById('queuePanel');
+  if (queue?.classList.contains('open')) toggleQueuePanel();
+});
 
 // ============================================================
 // SETTINGS
@@ -1301,6 +1477,24 @@ document.getElementById('autoPasteToggle')?.addEventListener('change', function 
 });
 document.getElementById('notifToggle')?.addEventListener('change', function () {
   state.settings.notifications = this.checked; saveSettings();
+});
+
+async function autoPasteInto(input) {
+  if (!state.settings.autoPaste || input.value.trim() || input.dataset.autoPasteUsed === 'true') return;
+  input.dataset.autoPasteUsed = 'true';
+  try {
+    const text = (await navigator.clipboard.readText()).trim();
+    if (isValidUrl(text)) {
+      input.value = text;
+      input.dispatchEvent(new Event('input', { bubbles: true }));
+      showToast('🔗 URL pasted from clipboard', 'info');
+    }
+  } catch { /* Clipboard permissions are optional; manual paste still works. */ }
+}
+
+document.querySelectorAll('.url-input').forEach(input => {
+  input.addEventListener('focus', () => autoPasteInto(input));
+  input.addEventListener('blur', () => { input.dataset.autoPasteUsed = 'false'; });
 });
 
 (function initSettings() {
@@ -1430,7 +1624,7 @@ function goAutoDetect() {
   const url = document.getElementById('autoDetectInput')?.value.trim();
   if (!url || !isValidUrl(url)) return;
   const platform = detectPlatform(url);
-  navigateTo(platform);
+  navigateTo(platform === 'universal' ? 'universal' : platform);
   // Paste URL into platform input
   const map = platformMap[platform];
   if (map) {
@@ -1441,6 +1635,50 @@ function goAutoDetect() {
   const goBtn = document.getElementById('autoDetectGo');
   if (goBtn) goBtn.textContent = 'Go ➜';
   showToast(`🔗 URL detected as ${platform} — switched tab!`, 'success');
+}
+
+function openTool(mode) {
+  state.preferredMode = mode === 'audio' || mode === 'image' ? mode : null;
+  navigateTo('universal');
+  const input = document.getElementById('uni-url');
+  if (input) {
+    input.focus();
+    showToast(mode === 'audio' ? '🎵 MP3 mode ready — paste a video URL.' : '🖼️ Image mode ready — paste a media URL.', 'info');
+  }
+}
+
+function showUpgradeNotice() {
+  showToast('👑 Pro plans are managed by the NexLoad administrator. Contact support to upgrade.', 'info');
+}
+
+function openNetworkSettings() {
+  navigateTo('settings');
+  const serverCard = document.getElementById('networkSettingsCard');
+  if (serverCard) {
+    serverCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    serverCard.classList.add('settings-card-highlight');
+    setTimeout(() => serverCard.classList.remove('settings-card-highlight'), 1400);
+  }
+  showToast('🌐 Network controls are available in Settings.', 'info');
+}
+
+function showAboutModal() {
+  const existing = document.getElementById('aboutModal');
+  if (existing) existing.remove();
+  const modal = document.createElement('div');
+  modal.id = 'aboutModal';
+  modal.className = 'about-modal';
+  modal.innerHTML = `<div class="about-modal-card" role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+    <button class="about-close" onclick="document.getElementById('aboutModal')?.remove()" aria-label="Close">×</button>
+    <div class="about-mark">V</div>
+    <div class="about-kicker">NEXLOAD STUDIO</div>
+    <h2 id="aboutTitle">Vordex <span>v2.0</span></h2>
+    <p>Fast, private media downloads with local processing and a clean command console.</p>
+    <div class="about-meta"><span>⚡ 8K-ready</span><span>🔒 Local-first</span><span>🌐 1000+ sites</span></div>
+    <button class="about-primary" onclick="document.getElementById('aboutModal')?.remove()">Done</button>
+  </div>`;
+  modal.addEventListener('click', event => { if (event.target === modal) modal.remove(); });
+  document.body.appendChild(modal);
 }
 
 // ============================================================
@@ -1521,12 +1759,13 @@ function drawWeekChart(byDay) {
     ctx.roundRect(x, y, barW, barH, 4);
     ctx.fill();
     // Label
-    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    const isLight = document.body.classList.contains('light-theme');
+    ctx.fillStyle = isLight ? '#64748b' : 'rgba(255,255,255,0.4)';
     ctx.font = '10px Outfit, sans-serif';
     ctx.textAlign = 'center';
     ctx.fillText(days[i].slice(5), x + barW/2, H - 4);
     if (val > 0) {
-      ctx.fillStyle = '#fff';
+      ctx.fillStyle = isLight ? '#334155' : '#fff';
       ctx.fillText(val, x + barW/2, y - 4);
     }
   });
@@ -1584,6 +1823,7 @@ function setSpeed(btn) {
 // TOAST
 // ============================================================
 function showToast(message, type = 'info') {
+  if (state.settings.notifications === false && type !== 'error') return;
   const icons = {
     success: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`,
     error: `<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>`,
@@ -1604,6 +1844,24 @@ function showToast(message, type = 'info') {
 // ============================================================
 // PER-PLATFORM BATCH MODE
 // ============================================================
+
+async function runWithConcurrency(items, limit, worker) {
+  const results = new Array(items.length);
+  let nextIndex = 0;
+  const runWorker = async () => {
+    while (nextIndex < items.length) {
+      const index = nextIndex++;
+      try {
+        results[index] = await worker(items[index], index);
+      } catch (error) {
+        results[index] = { status: 'rejected', reason: error };
+      }
+    }
+  };
+  const workerCount = Math.max(1, Math.min(Number(limit) || 1, items.length));
+  await Promise.all(Array.from({ length: workerCount }, runWorker));
+  return results;
+}
 
 // Mapping for batch prefixes to full names
 const batchPrefixMap = {
@@ -1750,7 +2008,7 @@ async function startPlatformBatch(prefix) {
 
   showToast('Starting ' + urls.length + ' downloads...', 'info');
 
-  await Promise.allSettled(urls.map(async (url, i) => {
+  await runWithConcurrency(urls, state.settings.concurrent, async (url, i) => {
     const progId = prefix + 'bp-' + i;
     const doneId = prefix + 'bd-' + i;
     const statusEl = document.getElementById(prefix + 'bs-' + i);
@@ -1799,7 +2057,7 @@ async function startPlatformBatch(prefix) {
       doneCount++;
       updateSummary();
     }
-  }));
+  });
 
   showToast('Batch complete! ' + urls.length + ' files processed.', 'success');
 }
@@ -1812,6 +2070,7 @@ async function startPlatformBatch(prefix) {
 // ============================================================
 (function init() {
   renderHistory();
+  renderFavorites();
   updateHistoryCount();
   checkServer();
 
@@ -1825,3 +2084,31 @@ async function startPlatformBatch(prefix) {
   console.log('%cNexLoad v5.0 Commercial — Local Python Backend ✔', 'color:#a855f7;font-size:14px;font-weight:bold;');
 })();
 
+
+function goToKeyStep() {
+  const s1 = document.getElementById('step1Google');
+  const s2 = document.getElementById('step2Key');
+  if (s1) s1.style.display = 'none';
+  if (s2) s2.style.display = 'block';
+  const badge = document.getElementById('verifiedEmailBadge');
+  if (badge) badge.textContent = 'Direct Key Activation';
+}
+
+async function checkLocalServerLicense() {
+  try {
+    const res = await fetch(`${API}/auth/active-license`);
+    const data = await readApiJson(res);
+    if (data.has_active && data.key) {
+      localStorage.setItem('nexload_license', data.key);
+      if (data.email) localStorage.setItem('nexload_email', data.email);
+      state.licenseKey = data.key;
+      state.licenseEmail = data.email || null;
+      state.licenseInfo = data.info;
+      document.documentElement.classList.add('has-license');
+      hideLicenseOverlay();
+      updateLicenseInfoBox(data.info);
+      return true;
+    }
+  } catch {}
+  return false;
+}

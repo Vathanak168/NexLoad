@@ -199,6 +199,26 @@
             background: #374151; color: white; border: none; padding: 10px 20px;
             border-radius: 8px; cursor: pointer;
         }
+        .admin-notice {
+            position: fixed; right: 24px; bottom: 24px; z-index: 200;
+            padding: 13px 16px; border-radius: 12px; font-size: 13px; font-weight: 600;
+            background: #1e293b; border: 1px solid var(--border); box-shadow: 0 16px 36px rgba(0,0,0,.28);
+        }
+        .admin-notice.success { color: #6ee7b7; border-color: rgba(16,185,129,.35); }
+        .admin-notice.error { color: #fca5a5; border-color: rgba(239,68,68,.35); }
+        .empty-table { padding: 36px !important; text-align: center; color: var(--text-muted); }
+        button:focus-visible, input:focus-visible, select:focus-visible, a:focus-visible { outline: 3px solid rgba(129,140,248,.45); outline-offset: 2px; }
+        @media (max-width: 840px) {
+            .navbar { padding: 14px 20px; }
+            .container { grid-template-columns: 1fr; margin: 24px auto; }
+        }
+        @media (max-width: 520px) {
+            .navbar { padding: 14px; }
+            .container { padding: 0 12px; }
+            .card { padding: 18px; border-radius: 14px; }
+            .modal-content { width: calc(100vw - 40px); box-sizing: border-box; }
+            .admin-notice { left: 14px; right: 14px; bottom: 14px; }
+        }
     </style>
 </head>
 <body>
@@ -272,19 +292,45 @@
     </div>
 
     <script>
+        const escapeHtml = value => String(value ?? '')
+            .replace(/&/g, '&amp;').replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;').replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+
+        function setNotice(message, type = 'info') {
+            let notice = document.getElementById('adminNotice');
+            if (!notice) {
+                notice = document.createElement('div');
+                notice.id = 'adminNotice';
+                document.body.appendChild(notice);
+            }
+            notice.className = `admin-notice ${type}`;
+            notice.textContent = message;
+            clearTimeout(window.noticeTimer);
+            window.noticeTimer = setTimeout(() => notice.remove(), 3600);
+        }
+
         // Load keys on start
-        fetchKeys();
+        fetchKeys().catch(error => setNotice(error.message, 'error'));
 
         async function fetchKeys() {
             const res = await fetch('/api/keys');
-            const keys = await res.json();
+            const payload = await res.json();
+            if (!res.ok || !Array.isArray(payload)) throw new Error(payload.error || 'Could not load licenses');
+            const keys = payload;
             const tbody = document.getElementById('keysTable');
             tbody.innerHTML = '';
+
+            if (!keys.length) {
+                tbody.innerHTML = '<tr><td colspan="7" class="empty-table">No licenses yet. Generate your first key.</td></tr>';
+                return;
+            }
 
             keys.forEach(k => {
                 const isRevoked = !k.active;
                 const expires = new Date(k.expires);
-                const isExpired = expires < new Date();
+                const isExpired = Number.isNaN(expires.getTime()) || expires < new Date();
+                const expiresLabel = Number.isNaN(expires.getTime()) ? 'Invalid date' : expires.toISOString().split('T')[0];
                 
                 let statusHtml = '';
                 if(isRevoked) statusHtml = '<span class="badge badge-revoked">Revoked</span>';
@@ -293,17 +339,17 @@
 
                 const tr = document.createElement('tr');
                 tr.innerHTML = `
-                    <td style="font-weight:500">${k.user}</td>
-                    <td style="font-family:monospace;font-size:12px;color:#94a3b8">${k.hwid || 'N/A'}</td>
+                    <td style="font-weight:500">${escapeHtml(k.user || 'Unknown')}</td>
+                    <td style="font-family:monospace;font-size:12px;color:#94a3b8">${escapeHtml(k.hwid || 'N/A')}</td>
                     <td style="font-family:monospace;font-size:12px;color:#cbd5e1">
-                        ${k.key} 
-                        <button class="copy-btn" onclick="copyText('${k.key}')" title="Copy">📋</button>
+                        ${escapeHtml(k.key)}
+                        <button class="copy-btn" onclick="copyText('${escapeHtml(k.key)}')" title="Copy">📋</button>
                     </td>
-                    <td><span class="badge badge-tier">${k.tier.toUpperCase()}</span></td>
-                    <td style="color:var(--text-muted)">${expires.toISOString().split('T')[0]}</td>
+                    <td><span class="badge badge-tier">${escapeHtml((k.tier || 'unknown').toUpperCase())}</span></td>
+                    <td style="color:var(--text-muted)">${expiresLabel}</td>
                     <td>${statusHtml}</td>
                     <td>
-                        ${!isRevoked ? `<button class="action-btn" onclick="revokeKey('${k.key}')">Revoke</button>` : '-'}
+                        ${!isRevoked ? `<button class="action-btn" onclick="revokeKey('${escapeHtml(k.key)}')">Revoke</button>` : '-'}
                     </td>
                 `;
                 tbody.appendChild(tr);
@@ -313,45 +359,66 @@
         document.getElementById('genForm').addEventListener('submit', async(e) => {
             e.preventDefault();
             const btn = document.getElementById('genBtn');
+            btn.disabled = true;
             btn.textContent = 'Generating...';
-            
-            const res = await fetch('/api/generate', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({
-                    user: document.getElementById('custName').value,
-                    hwid: document.getElementById('custHwid').value,
-                    tier: document.getElementById('tierSelect').value
-                })
-            });
-            const data = await res.json();
-            if(data.success) {
+            try {
+                const res = await fetch('/api/generate', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({
+                        user: document.getElementById('custName').value,
+                        hwid: document.getElementById('custHwid').value,
+                        tier: document.getElementById('tierSelect').value
+                    })
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'Could not generate key');
                 document.getElementById('newKeyValue').textContent = data.key.key;
                 document.getElementById('successModal').style.display = 'flex';
                 document.getElementById('genForm').reset();
-                fetchKeys();
-            } else {
-                alert(data.error);
+                await fetchKeys();
+                setNotice('License generated successfully', 'success');
+            } catch (error) {
+                setNotice(error.message, 'error');
+            } finally {
+                btn.disabled = false;
+                btn.textContent = 'Generate Key';
             }
-            btn.textContent = 'Generate Key';
         });
 
         async function revokeKey(key) {
             if(!confirm('Are you sure you want to revoke this key?')) return;
-            await fetch('/api/revoke', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify({key})
-            });
-            fetchKeys();
+            try {
+                const res = await fetch('/api/revoke', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify({key})
+                });
+                const data = await res.json();
+                if (!res.ok || !data.success) throw new Error(data.error || 'Could not revoke key');
+                await fetchKeys();
+                setNotice('License revoked', 'success');
+            } catch (error) {
+                setNotice(error.message, 'error');
+            }
         }
 
         function closeModal() {
             document.getElementById('successModal').style.display = 'none';
         }
 
-        function copyText(text) {
-            navigator.clipboard.writeText(text);
+        async function copyText(text) {
+            try {
+                await navigator.clipboard.writeText(text);
+            } catch {
+                const helper = document.createElement('textarea');
+                helper.value = text;
+                document.body.appendChild(helper);
+                helper.select();
+                document.execCommand('copy');
+                helper.remove();
+            }
+            setNotice('License key copied', 'success');
         }
 
         function copyModalKey() {
@@ -360,6 +427,13 @@
             btn.textContent = 'Copied!';
             setTimeout(() => btn.textContent = 'Copy to Clipboard', 2000);
         }
+
+        document.getElementById('successModal').addEventListener('click', event => {
+            if (event.target.id === 'successModal') closeModal();
+        });
+        document.addEventListener('keydown', event => {
+            if (event.key === 'Escape') closeModal();
+        });
     </script>
 </body>
 </html>

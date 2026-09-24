@@ -12,7 +12,14 @@ Usage:
   python license_manager.py info NEXLOAD-XXXX-XXXX-XXXX-XXXX
 """
 
-import hmac, hashlib, json, os, argparse, uuid, datetime, sys
+import argparse
+import datetime
+import hashlib
+import hmac
+import json
+import os
+import sys
+import uuid
 
 try:
     sys.stdout.reconfigure(encoding='utf-8')
@@ -206,7 +213,7 @@ def main():
     if args.cmd == "generate":
         info = generate_key(args.user, args.tier, args.days)
         print("\n" + "═" * 60)
-        print(f"  [OK] License Key Generated!")
+        print("  [OK] License Key Generated!")
         print("═" * 60)
         print(f"  Key:      {info['key']}")
         print(f"  User:     {info['user']}")

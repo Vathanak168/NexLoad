@@ -1,22 +1,36 @@
 """
-NexLoad Server v4.0 — Commercial Edition
+NexLoad Server v4.5 — Commercial Edition
 Python + Flask + yt-dlp backend
 Supports: YouTube, TikTok, Instagram, Facebook, Pinterest, Twitter/X, 1000+ more
 Features: License auth, stats, custom folder, subtitles, speed limiter
 """
 
-import os, sys, json, uuid, threading, time, shutil, re, hmac, hashlib, datetime, tempfile, urllib.parse
+import datetime
+import hashlib
+import hmac
+import json
+import os
+import re
+import shutil
+import sys
+import tempfile
+import threading
+import time
+import urllib.parse
+import uuid
+
 config = None
 try:
     sys.stdout.reconfigure(encoding='utf-8')
     sys.stderr.reconfigure(encoding='utf-8')
-except Exception:
-    pass
-from flask import Flask, request, jsonify, Response, send_file
+except Exception as e:
+    print(f"⚠️ [Error]: {e}")
+import requests
+import yt_dlp
+from flask import Flask, Response, jsonify, request, send_file
 from flask_cors import CORS
 from werkzeug.exceptions import HTTPException
-import yt_dlp
-import requests
+
 import db
 
 try:
@@ -66,12 +80,11 @@ def _verify_email_token(token: str) -> str:
         return ''
 
 def _make_task_token(task_id: str) -> str:
-    secret = (os.environ.get('SECRET_KEY') or getattr(config, 'SECRET_KEY', '') or 'nexload_secret').encode('utf-8')
-    return hmac.new(secret, f"task|{task_id}".encode('utf-8'), hashlib.sha256).hexdigest()[:16]
+    secret_bytes = SECRET_KEY if isinstance(SECRET_KEY, bytes) else str(SECRET_KEY).encode('utf-8')
+    return hmac.new(secret_bytes, f"task|{task_id}".encode(), hashlib.sha256).hexdigest()[:16]
 
 def _validate_license(full_key: str, email: str = None, allow_bind_email: bool = False) -> dict:
     """Validate license using SQL Database with Gmail account binding"""
-    hwid = get_hwid()
     
     if not full_key:
         return {'valid': False, 'reason': 'Key missing. Please enter your license.'}
@@ -86,8 +99,8 @@ def _validate_license(full_key: str, email: str = None, allow_bind_email: bool =
                     if full_key in jdb:
                         rec = jdb[full_key]
                         db.save_license(rec)
-                except Exception:
-                    pass
+                except Exception as e:
+                    print(f"⚠️ [Error]: {e}")
                     
         if not rec:
             return {'valid': False, 'reason': 'Key not found in system'}
@@ -95,30 +108,39 @@ def _validate_license(full_key: str, email: str = None, allow_bind_email: bool =
         if not rec.get('active'):
             return {'valid': False, 'reason': 'Key has been revoked or banned'}
             
-        # Check Gmail Cloud Binding (Replacing legacy HWID Lock)
+        # Check Gmail Cloud Binding / Device Lock
         bound_email = rec.get('bound_email')
         if email:
             email_clean = email.strip().lower()
             if not bound_email:
-                if not allow_bind_email:
-                    return {'valid': False, 'reason': 'Please verify your Gmail account before linking this key.'}
-                # First activation auto-binding!
+                # First activation auto-binding: permanently locks key to this user
                 db.bind_license_email(full_key, email_clean)
                 bound_email = email_clean
                 rec['bound_email'] = email_clean
+                try:
+                    if os.path.exists(LICENSE_DB_PATH):
+                        with open(LICENSE_DB_PATH, "r", encoding="utf-8") as jf:
+                            jdb = json.load(jf)
+                        if full_key in jdb:
+                            jdb[full_key]['bound_email'] = email_clean
+                            with open(LICENSE_DB_PATH, "w", encoding="utf-8") as jf:
+                                json.dump(jdb, jf, indent=2, ensure_ascii=False)
+                except Exception:
+                    pass
             elif bound_email.lower() != email_clean:
                 parts = bound_email.split('@')
                 masked = (parts[0][:2] + '***@' + parts[1]) if len(parts) == 2 else 'another Gmail account'
                 return {'valid': False, 'reason': f'Key is registered to {masked}. Please log in with that Gmail account.', 'bound_email': masked}
         elif bound_email:
-            parts = bound_email.split('@')
-            masked = (parts[0][:2] + '***@' + parts[1]) if len(parts) == 2 else 'another Gmail account'
-            return {'valid': False, 'reason': f'Please enter your registered Gmail account ({masked}) to use this key.', 'bound_email': masked}
+            # Retain bound email for session validation
+            email_clean = bound_email.strip().lower()
             
         # Verify Cryptographic Signature
-        sig16 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:16].upper()
-        sig4 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:4].upper()
-        sig6 = hmac.new(SECRET_KEY, rec['key_body'].encode(), hashlib.sha256).hexdigest()[:6].upper()
+        key_body_bytes = rec['key_body'] if isinstance(rec['key_body'], bytes) else str(rec['key_body']).encode()
+        secret_bytes = SECRET_KEY if isinstance(SECRET_KEY, bytes) else str(SECRET_KEY).encode()
+        sig16 = hmac.new(secret_bytes, key_body_bytes, hashlib.sha256).hexdigest()[:16].upper()
+        sig4 = hmac.new(secret_bytes, key_body_bytes, hashlib.sha256).hexdigest()[:4].upper()
+        sig6 = hmac.new(secret_bytes, key_body_bytes, hashlib.sha256).hexdigest()[:6].upper()
         
         if rec.get('signature') not in [sig16, sig6, sig4]:
             return {'valid': False, 'reason': 'Key Signature Invalid (Tampered)'}
@@ -153,7 +175,7 @@ def _validate_license(full_key: str, email: str = None, allow_bind_email: bool =
             'batch':       rec.get('batch', True),
         }
     except Exception as e:
-        return {'valid': False, 'reason': f'Validation Error: {str(e)}'}
+        return {'valid': False, 'reason': f'Validation Error: {e!s}'}
 
 # ── Stats tracking ────────────────────────────────────────────────
 def _load_stats():
@@ -169,12 +191,12 @@ def _record_download(platform='unknown', file_size=0):
         stats['total_bytes'] = stats.get('total_bytes', 0) + file_size
         bp = stats.setdefault('by_platform', {})
         bp[platform] = bp.get(platform, 0) + 1
-        day = datetime.datetime.utcnow().strftime('%Y-%m-%d')
+        day = datetime.datetime.now(datetime.timezone.utc).strftime('%Y-%m-%d')
         bd = stats.setdefault('by_day', {})
         bd[day] = bd.get(day, 0) + 1
         _save_stats(stats)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ [Error]: {e}")
 
 # ── Optional: requests for direct image URLs ──────────────────────
 try:
@@ -226,7 +248,7 @@ def _tikwm_fetch(url):
         if payload.get('code') == 0 and payload.get('data'):
             print('  ✅ tikwm success')
             return payload['data']
-        print(f'  ❌ tikwm non-zero code, trying fallback...')
+        print('  ❌ tikwm non-zero code, trying fallback...')
     except Exception as e:
         print(f'  ❌ tikwm error: {e}')
 
@@ -246,7 +268,7 @@ def _tikwm_fetch(url):
         if images:
             print(f'  ✅ douyin.wtf success: {len(images)} images')
             return {'title': title, 'cover': cover, 'images': images}
-        print(f'  ❌ douyin.wtf: no images in response')
+        print('  ❌ douyin.wtf: no images in response')
     except Exception as e:
         print(f'  ❌ douyin.wtf error: {e}')
 
@@ -271,7 +293,7 @@ def _download_image_bytes(img_url, out_path, task_id, progress_base=0, progress_
     with open(out_path, 'wb') as f:
         f.write(r.content)
     pct = int(progress_base + ((img_idx + 1) / total_imgs) * (progress_max - progress_base))
-    tasks[task_id].update({'progress': pct})
+    update_task(task_id, {'progress': pct})
 
 def _resolve_final_download_path(ydl, info, download_dir, mode, started_at, progress_path=''):
     """Find the final file after yt-dlp post-processing/merge."""
@@ -284,8 +306,8 @@ def _resolve_final_download_path(ydl, info, download_dir, mode, started_at, prog
             p = os.path.abspath(path)
             if os.path.isfile(p) and not p.endswith(('.part', '.ytdl', '.temp')):
                 candidates.append(p)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ [Error]: {e}")
 
     add_candidate(progress_path)
 
@@ -293,8 +315,8 @@ def _resolve_final_download_path(ydl, info, download_dir, mode, started_at, prog
         try:
             for item in info.get('requested_downloads') or []:
                 add_candidate(item.get('filepath') or item.get('filename'))
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ [Error]: {e}")
         try:
             prepared = ydl.prepare_filename(info)
             add_candidate(prepared)
@@ -304,8 +326,8 @@ def _resolve_final_download_path(ydl, info, download_dir, mode, started_at, prog
             elif mode == 'audio':
                 for ext in ('.m4a', '.webm', '.mp3'):
                     add_candidate(root + ext)
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ [Error]: {e}")
 
     try:
         cutoff = started_at - 5
@@ -313,8 +335,8 @@ def _resolve_final_download_path(ydl, info, download_dir, mode, started_at, prog
             p = os.path.join(download_dir, name)
             if os.path.isfile(p) and os.path.getmtime(p) >= cutoff:
                 add_candidate(p)
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ [Error]: {e}")
 
     if mode == 'video':
         mp4s = [p for p in candidates if os.path.splitext(p)[1].lower() == '.mp4']
@@ -336,8 +358,8 @@ def _is_cloud_environment():
             host = request.host.lower().split(':')[0]
             if not (host == 'localhost' or host == '127.0.0.1'):
                 return True
-    except Exception:
-        pass
+    except Exception as e:
+        print(f"⚠️ [Error]: {e}")
     return False
 
 app = Flask(__name__, static_folder=_BASE_DIR, static_url_path='')
@@ -465,19 +487,26 @@ def apply_cookies(ydl_opts, url=""):
     except Exception:
         ydl_opts.setdefault('cachedir', False)
 
+    consent_file = os.path.join(_BASE_DIR, 'desktop_consent.json')
+    consent_data = {}
+    if os.path.exists(consent_file):
+        try:
+            with open(consent_file, "r", encoding="utf-8") as f:
+                consent_data = json.load(f)
+        except Exception as e:
+            print(f"⚠️ [Error reading consent]: {e}")
+
+    # Handle YouTube restrictions
     if 'youtube.com' in url.lower() or 'youtu.be' in url.lower():
-        consent_file = os.path.join(_BASE_DIR, 'youtube_consent.json')
-        if os.path.exists(consent_file):
-            try:
-                with open(consent_file, "r", encoding="utf-8") as f:
-                    data = json.load(f)
-                    if not data.get("youtube_enabled", False):
-                        raise ValueError("YouTube download is disabled in your Desktop setup config.")
-            except ValueError:
-                raise
-            except Exception:
-                pass
+        if os.path.exists(consent_file) and not consent_data.get("youtube_enabled", False):
+            raise ValueError("YouTube download is disabled in your Desktop setup config.")
         if not os.environ.get("ALLOW_YOUTUBE_COOKIES", ""):
+            return ydl_opts
+
+    # Handle Meta (Facebook/Instagram) browser cookies
+    if 'facebook.com' in url.lower() or 'instagram.com' in url.lower() or 'fb.watch' in url.lower():
+        if consent_data.get("meta_enabled", False):
+            ydl_opts['cookiesfrombrowser'] = ('chrome',)
             return ydl_opts
 
     cf = get_cookies_file()
@@ -486,7 +515,14 @@ def apply_cookies(ydl_opts, url=""):
     return ydl_opts
 
 # ── In-memory task store ──────────────────────────────────────────
+import threading
+tasks_lock = threading.Lock()
 tasks = {}  # task_id → { status, progress, speed, eta, filename, error }
+
+def update_task(task_id, updates):
+    with tasks_lock:
+        if task_id in tasks:
+            tasks[task_id].update(updates)
 
 def require_license(fn):
     def wrapper(*args, **kwargs):
@@ -558,6 +594,46 @@ def get_info():
             'isImageCandidate': True,
         })
 
+    # ── Intercept TikTok before yt-dlp (which fails via CAPTCHA) ──
+    if _is_any_tiktok(url) and HAS_REQUESTS:
+        td = _tikwm_fetch(url)
+        if td:
+            images = td.get('images', [])
+            if images:
+                return jsonify({
+                    'title':          td.get('title') or 'TikTok Slideshow',
+                    'channel':        td.get('author', {}).get('nickname', '') if isinstance(td.get('author'), dict) else '',
+                    'thumbnail':      td.get('cover', ''),
+                    'duration':       '',
+                    'views':          td.get('play_count', 0),
+                    'platform':       'TikTok',
+                    'webpage_url':    url,
+                    'formats':        [],
+                    'isImageCandidate': True,
+                })
+            elif td.get('play') or td.get('wmplay'):
+                return jsonify({
+                    'title': td.get('title') or 'TikTok Video',
+                    'channel': td.get('author', {}).get('nickname', '') if isinstance(td.get('author'), dict) else '',
+                    'thumbnail': td.get('cover', ''),
+                    'duration': td.get('duration', 0),
+                    'views': td.get('play_count', 0),
+                    'platform': 'TikTok',
+                    'webpage_url': url,
+                    'formats': [{
+                        'format_id': 'tikwm',
+                        'ext': 'mp4',
+                        'resolution': 'HD',
+                        'height': 1080,
+                        'vcodec': 'h264',
+                        'url': td.get('play') or td.get('wmplay'),
+                        'filesize': td.get('size', 0),
+                    }],
+                    'max_height': 1080,
+                    'isImageCandidate': False,
+                    'is_playlist': False,
+                })
+
     try:
         ydl_opts = apply_cookies({
             'quiet': True,
@@ -611,7 +687,7 @@ def get_info():
             # some extractors return generator, try to count if it's a list
             playlist_count = len(list(entries)) if isinstance(entries, list) else info.get('playlist_count', 0)
             if not fmt_list:
-                fmt_list = [{'label': f'Download All Videos (Best Quality)', 'height': '1080', 'best_only': True}]
+                fmt_list = [{'label': 'Download All Videos (Best Quality)', 'height': '1080', 'best_only': True}]
 
         # Duration string
         dur = info.get('duration')
@@ -704,8 +780,8 @@ def get_image_info():
                     'thumbnail': url,
                     'title':     fname,
                 })
-        except Exception:
-            pass
+        except Exception as e:
+            print(f"⚠️ [Error]: {e}")
 
     # ── Pexels photo (parses ID directly to get original image) ──
     if 'pexels.com/photo/' in url:
@@ -749,22 +825,44 @@ def get_image_info():
         td = _tikwm_fetch(url)
         if td:
             images = td.get('images', [])  # list of image URLs for slideshow
-            title  = td.get('title') or 'TikTok Slideshow'
-            cover  = td.get('cover') or (images[0] if images else '')
-            imgs   = [
-                {'url': img, 'thumb': img, 'title': f'Slide {i+1}'}
-                for i, img in enumerate(images)
-            ]
-            return jsonify({
-                'type':      'slideshow',
-                'platform':  'TikTok',
-                'title':     title,
-                'thumbnail': cover,
-                'count':     len(imgs),
-                'images':    imgs,
-                'is_image':  True,
-                'source':    'tikwm',
-            })
+            if images:
+                title  = td.get('title') or 'TikTok Slideshow'
+                cover  = td.get('cover') or (images[0] if images else '')
+                imgs   = [
+                    {'url': img, 'thumb': img, 'title': f'Slide {i+1}'}
+                    for i, img in enumerate(images)
+                ]
+                return jsonify({
+                    'type':      'slideshow',
+                    'platform':  'TikTok',
+                    'title':     title,
+                    'thumbnail': cover,
+                    'count':     len(imgs),
+                    'images':    imgs,
+                    'is_image':  True,
+                    'source':    'tikwm',
+                })
+            elif td.get('play') or td.get('wmplay'):
+                # It's a video! Return a fast response so we bypass yt-dlp 403 blocks.
+                return jsonify({
+                    'title': td.get('title') or 'TikTok Video',
+                    'channel': td.get('author', {}).get('nickname', '') if isinstance(td.get('author'), dict) else '',
+                    'thumbnail': td.get('cover', ''),
+                    'duration': td.get('duration', 0),
+                    'views': td.get('play_count', 0),
+                    'platform': 'TikTok',
+                    'webpage_url': url,
+                    'formats': [{
+                        'format_id': 'tikwm',
+                        'ext': 'mp4',
+                        'resolution': 'HD',
+                        'height': 1080,
+                        'vcodec': 'h264',
+                        'url': td.get('play') or td.get('wmplay'),
+                        'filesize': td.get('size', 0),
+                    }],
+                    'isImageCandidate': False,
+                })
         # tikwm failed — fall through to yt-dlp strategies below
 
     # Try yt-dlp for platform image posts (Instagram, Pinterest, Twitter, Reddit, TikTok...)
@@ -784,7 +882,7 @@ def get_image_info():
     }
 
     info = None
-    strategies = [ydl_base_opts, ydl_tiktok_opts]
+    strategies = [ydl_base_opts, ydl_tiktok_opts, ydl_generic_opts]
     last_err = None
 
     for opts in strategies:
@@ -885,7 +983,8 @@ def start_download():
             tasks.pop(tid, None)
 
     task_id = uuid.uuid4().hex[:8]
-    tasks[task_id] = {
+    with tasks_lock:
+        tasks[task_id] = {
         'status':     'starting',
         'progress':   0,
         'speed':      '',
@@ -934,11 +1033,9 @@ def start_download():
                     })
                     n = len(direct_urls)
                     for i, img_url in enumerate(direct_urls):
-                        tasks[task_id].update({'progress': int((i / n) * 95)})
-                        low = img_url.lower()
-                        img_ext = '.jpg'
-                        if 'png'  in low: img_ext = '.png'
-                        elif 'webp' in low: img_ext = '.webp'
+                        update_task(task_id, {'progress': int((i / n) * 95)})
+                        _img_ext = os.path.splitext(urllib.parse.urlparse(img_url).path)[1].lower()
+                        img_ext = _img_ext if _img_ext in IMAGE_EXTS else '.jpg'
                         fname    = f'{safe_t}_slide{i+1:02d}{img_ext}'
                         out_path = os.path.join(DOWNLOAD_DIR, fname)
                         r = _requests.get(img_url, timeout=30,
@@ -946,9 +1043,11 @@ def start_download():
                         r.raise_for_status()
                         with open(out_path, 'wb') as f:
                             f.write(r.content)
+                    _record_download(platform='slideshow', file_size=0)
                     tasks[task_id].update({
                         'status':   'done', 'progress': 100,
                         'filename': f'{safe_t} — {n} image(s) saved',
+                        'filepath': out_path,
                     })
                     return
 
@@ -975,8 +1074,8 @@ def start_download():
                         if any(t in ct for t in ('image/', 'jpeg', 'png', 'gif', 'webp')):
                             is_direct = True
                             ext = '.' + ct.split('/')[-1].split(';')[0].strip()
-                    except Exception:
-                        pass
+                    except Exception as e:
+                        print(f"⚠️ [Error]: {e}")
 
                 if is_direct and HAS_REQUESTS:
                     # Direct image download via requests with progress
@@ -988,7 +1087,7 @@ def start_download():
                     resp.raise_for_status()
                     total = int(resp.headers.get('Content-Length', 0))
                     done  = 0
-                    tasks[task_id].update({'status': 'downloading', 'filename': safe_name})
+                    update_task(task_id, {'status': 'downloading', 'filename': safe_name})
                     with open(out_path, 'wb') as f:
                         for chunk in resp.iter_content(8192):
                             if chunk:
@@ -999,6 +1098,7 @@ def start_download():
                                     'progress': pct,
                                     'size':     f'{done // 1024} KB',
                                 })
+                    _record_download(platform='image', file_size=os.path.getsize(out_path))
                     tasks[task_id].update({
                         'status': 'done', 'progress': 100,
                         'filepath': out_path, 'filename': safe_name,
@@ -1023,11 +1123,9 @@ def start_download():
                                 })
                                 for i, img_url in enumerate(images):
                                     pct = int((i / len(images)) * 95)
-                                    tasks[task_id].update({'progress': pct})
-                                    img_ext = '.jpg'
-                                    low = img_url.lower()
-                                    if 'png' in low:  img_ext = '.png'
-                                    elif 'webp' in low: img_ext = '.webp'
+                                    update_task(task_id, {'progress': pct})
+                                    _img_ext = os.path.splitext(urllib.parse.urlparse(img_url).path)[1].lower()
+                                    img_ext = _img_ext if _img_ext in IMAGE_EXTS else '.jpg'
                                     fname    = f'{safe_t}_slide{i+1:02d}{img_ext}'
                                     out_path = os.path.join(DOWNLOAD_DIR, fname)
                                     r = _requests.get(
@@ -1037,10 +1135,12 @@ def start_download():
                                     r.raise_for_status()
                                     with open(out_path, 'wb') as f:
                                         f.write(r.content)
+                                _record_download(platform='tiktok', file_size=0)
                                 tasks[task_id].update({
                                     'status':   'done',
                                     'progress': 100,
                                     'filename': f'{safe_t} — {len(images)} slides saved',
+                                    'filepath': out_path,
                                 })
                                 return
                             elif td.get('play'):  # it's actually a video, fall through
@@ -1085,7 +1185,8 @@ def start_download():
                                 ydl_opts['ffmpeg_location'] = FFMPEG_PATH
                             with yt_dlp.YoutubeDL(ydl_opts) as ydl:
                                 ydl.download([url])
-                            tasks[task_id].update({'status': 'done', 'progress': 100})
+                            _record_download(platform='image')
+                            update_task(task_id, {'status': 'done', 'progress': 100})
                             return
 
                         # Fallback: grab best thumbnail / direct URL from info
@@ -1105,7 +1206,7 @@ def start_download():
                             safe_title = re.sub(r'[^\w.\-]', '_', title)
                             filename = f'{safe_title}{ext}'
                             out_path = os.path.join(DOWNLOAD_DIR, filename)
-                            tasks[task_id].update({'status': 'downloading', 'filename': filename})
+                            update_task(task_id, {'status': 'downloading', 'filename': filename})
                             resp = _requests.get(img_url, stream=True, timeout=30,
                                                  headers={'User-Agent': 'Mozilla/5.0'})
                             resp.raise_for_status()
@@ -1117,7 +1218,8 @@ def start_download():
                                         f.write(chunk)
                                         done += len(chunk)
                                         pct = int(done / total * 100) if total else 50
-                                        tasks[task_id].update({'progress': pct, 'size': f'{done//1024} KB'})
+                                        update_task(task_id, {'progress': pct, 'size': f'{done//1024} KB'})
+                            _record_download(platform='image', file_size=os.path.getsize(out_path))
                             tasks[task_id].update({'status': 'done', 'progress': 100,
                                                    'filepath': out_path, 'filename': filename})
                             return
@@ -1136,11 +1238,12 @@ def start_download():
                             dl_opts_fallback['ffmpeg_location'] = FFMPEG_PATH
                         with yt_dlp.YoutubeDL(dl_opts_fallback) as ydl:
                             ydl.download([url])
-                        tasks[task_id].update({'status': 'done', 'progress': 100})
+                        update_task(task_id, {'status': 'done', 'progress': 100})
                         return
                     except Exception as fallback_err:
+                        platform_name = 'TikTok' if _is_any_tiktok(url) else 'This platform'
                         raise Exception(
-                            f'TikTok slideshow/photo posts are not yet fully supported by yt-dlp. '
+                            f'{platform_name} image/photo posts could not be downloaded. '
                             f'Try updating yt-dlp: pip install -U yt-dlp  (detail: {fallback_err})'
                         )
 
@@ -1178,7 +1281,16 @@ def start_download():
 
             # Speed limit (e.g. '1M' = 1 MB/s, '500K' = 500 KB/s)
             if speed_limit and speed_limit != 'unlimited':
-                ydl_opts['ratelimit'] = speed_limit
+                try:
+                    _sl = str(speed_limit).strip().upper()
+                    if _sl.endswith('M'):
+                        ydl_opts['ratelimit'] = int(float(_sl[:-1]) * 1024 * 1024)
+                    elif _sl.endswith('K'):
+                        ydl_opts['ratelimit'] = int(float(_sl[:-1]) * 1024)
+                    else:
+                        ydl_opts['ratelimit'] = int(_sl)
+                except (ValueError, TypeError):
+                    ydl_opts['ratelimit'] = speed_limit
 
             # Subtitles
             if subtitles and FFMPEG_PATH and mode == 'video':
@@ -1194,6 +1306,38 @@ def start_download():
             if FFMPEG_PATH:
                 ydl_opts['ffmpeg_location'] = FFMPEG_PATH
                 ydl_opts['merge_output_format'] = 'mp4'
+
+            # ── TikTok: bypass yt-dlp → use tikwm direct download ──
+            if _is_any_tiktok(url) and HAS_REQUESTS:
+                td = _tikwm_fetch(url)
+                if td:
+                    _media_url = (td.get('music') or td.get('play') or td.get('wmplay')) if mode == 'audio' else (td.get('hdplay') or td.get('play') or td.get('wmplay'))
+                    if _media_url:
+                        _ext = '.mp3' if mode == 'audio' else '.mp4'
+                        _safe = re.sub(r'[^\w.\-]', '_', td.get('title') or f'TikTok_{task_id}')[:50] + _ext
+                        _out = os.path.join(DOWNLOAD_DIR, _safe)
+                        update_task(task_id, {'status': 'downloading', 'filename': _safe})
+                        _resp = _requests.get(_media_url, stream=True, timeout=60,
+                                              headers={'User-Agent': 'Mozilla/5.0'})
+                        _resp.raise_for_status()
+                        _total = int(_resp.headers.get('Content-Length', 0))
+                        _done = 0
+                        with open(_out, 'wb') as f:
+                            for _chunk in _resp.iter_content(8192):
+                                if _chunk:
+                                    f.write(_chunk)
+                                    _done += len(_chunk)
+                                    _pct = int(_done / _total * 100) if _total else 50
+                                    update_task(task_id, {'progress': _pct, 'size': f'{_done // 1024} KB'})
+                        _fsize = os.path.getsize(_out)
+                        _record_download(platform='tiktok', file_size=_fsize)
+                        tasks[task_id].update({
+                            'status': 'done', 'progress': 100,
+                            'filepath': _out, 'filename': _safe,
+                            'size': f'{_fsize // 1024} KB',
+                        })
+                        return
+                # tikwm failed — fall through to yt-dlp
 
             download_started_at = time.time()
             final_path = ''
@@ -1219,7 +1363,7 @@ def start_download():
                     'filename': os.path.basename(final_path),
                     'size': f'{final_size // 1024} KB' if final_size else tasks[task_id].get('size', ''),
                 })
-            tasks[task_id].update(update)
+            update_task(task_id, update)
 
         except Exception as e:
             err_str = str(e).replace('[youtube]','').strip()
@@ -1236,7 +1380,7 @@ def start_download():
                                 ext = '.mp4' if '.mp4' in play_url or mode != 'image' else '.jpg'
                                 safe_name = re.sub(r'[^\w.\-]', '_', td.get('title') or f'TikTok_{task_id}')[:50] + ext
                                 out_path = os.path.join(DOWNLOAD_DIR, safe_name)
-                                tasks[task_id].update({'status': 'downloading', 'filename': safe_name})
+                                update_task(task_id, {'status': 'downloading', 'filename': safe_name})
                                 resp = _requests.get(play_url, stream=True, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
                                 resp.raise_for_status()
                                 total = int(resp.headers.get('Content-Length', 0))
@@ -1247,9 +1391,9 @@ def start_download():
                                             f.write(chunk)
                                             done += len(chunk)
                                             pct = int(done / total * 100) if total else 50
-                                            tasks[task_id].update({'progress': pct, 'size': f'{done // 1024} KB'})
-                                _record_download(platform='tiktok')
-                                tasks[task_id].update({'status': 'done', 'progress': 100, 'filepath': out_path, 'filename': safe_name})
+                                            update_task(task_id, {'progress': pct, 'size': f'{done // 1024} KB'})
+                                _record_download(platform='tiktok', file_size=os.path.getsize(out_path))
+                                update_task(task_id, {'status': 'done', 'progress': 100, 'filepath': out_path, 'filename': safe_name})
                                 return
                     elif 'pin.it/' in url or 'pinterest.com/' in url:
                         req_p = _requests.get(url, headers={'User-Agent': 'Mozilla/5.0'}, timeout=15, allow_redirects=True)
@@ -1267,7 +1411,7 @@ def start_download():
                             ext = '.mp4' if '.mp4' in media_url else '.jpg'
                             safe_name = f'Pinterest_{task_id}{ext}'
                             out_path = os.path.join(DOWNLOAD_DIR, safe_name)
-                            tasks[task_id].update({'status': 'downloading', 'filename': safe_name})
+                            update_task(task_id, {'status': 'downloading', 'filename': safe_name})
                             resp = _requests.get(media_url, stream=True, timeout=30, headers={'User-Agent': 'Mozilla/5.0'})
                             resp.raise_for_status()
                             total = int(resp.headers.get('Content-Length', 0))
@@ -1278,16 +1422,16 @@ def start_download():
                                         f.write(chunk)
                                         done += len(chunk)
                                         pct = int(done / total * 100) if total else 50
-                                        tasks[task_id].update({'progress': pct, 'size': f'{done // 1024} KB'})
-                            _record_download(platform='pinterest')
-                            tasks[task_id].update({'status': 'done', 'progress': 100, 'filepath': out_path, 'filename': safe_name})
+                                        update_task(task_id, {'progress': pct, 'size': f'{done // 1024} KB'})
+                            _record_download(platform='pinterest', file_size=os.path.getsize(out_path))
+                            update_task(task_id, {'status': 'done', 'progress': 100, 'filepath': out_path, 'filename': safe_name})
                             return
-                except Exception:
-                    pass
-            tasks[task_id].update({'status': 'error', 'error': err_str})
+                except Exception as e:
+                    print(f"⚠️ [Error]: {e}")
+            update_task(task_id, {'status': 'error', 'error': err_str})
 
     threading.Thread(target=run, daemon=True).start()
-    return jsonify({'task_id': task_id, 'task_token': _make_task_token(task_id), 'download_dir': DOWNLOAD_DIR})
+    return jsonify({'task_id': task_id, 'task_token': _make_task_token(task_id)})
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1309,7 +1453,8 @@ def get_progress(task_id):
             return jsonify({'error': res.get('reason', 'License invalid')}), 403
     def stream():
         while True:
-            task = tasks.get(task_id, {'status': 'not_found', 'error': 'Task not found'})
+            with tasks_lock:
+                task = tasks.get(task_id, {'status': 'not_found', 'error': 'Task not found'}).copy() if task_id in tasks else {'status': 'not_found', 'error': 'Task not found'}
             yield f'data: {json.dumps(task)}\n\n'
             if task['status'] in ('done', 'error', 'not_found'):
                 break
@@ -1334,7 +1479,7 @@ def ping():
     return jsonify({
         'ok': True,
         'dir': get_download_dir(),
-        'version': '4.0',
+        'version': '4.5',
         'google_client_id': GOOGLE_CLIENT_ID or os.environ.get('GOOGLE_CLIENT_ID', '')
     })
 
@@ -1430,14 +1575,48 @@ def auth_validate():
     email = str(data.get('email') or '').strip().lower()
     email_token = str(data.get('email_token') or '').strip()
     verified_email = _verify_email_token(email_token)
-    allow_bind_email = bool(verified_email and verified_email == email)
+    allow_bind_email = bool(verified_email and verified_email == email) or bool(email and '@' in email)
     
     result = _validate_license(key, email=email, allow_bind_email=allow_bind_email)
     
     if not key:
         return jsonify(result), 400
+
+    if result.get('valid'):
+        try:
+            active_path = os.path.join(_BASE_DIR, 'active_license.json')
+            with open(active_path, 'w', encoding='utf-8') as f:
+                json.dump({'key': key, 'email': result.get('bound_email') or email, 'user': result.get('user')}, f, indent=2)
+        except Exception:
+            pass
         
     return jsonify(result)
+
+@app.route('/api/auth/active-license', methods=['GET'])
+def get_active_license():
+    try:
+        active_path = os.path.join(_BASE_DIR, 'active_license.json')
+        if os.path.exists(active_path):
+            with open(active_path, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            key = data.get('key')
+            if key:
+                val = _validate_license(key, email=data.get('email'))
+                if val.get('valid'):
+                    return jsonify({'has_active': True, 'key': key, 'email': data.get('email'), 'info': val})
+    except Exception:
+        pass
+    return jsonify({'has_active': False})
+
+@app.route('/api/auth/logout', methods=['POST'])
+def auth_logout():
+    try:
+        active_path = os.path.join(_BASE_DIR, 'active_license.json')
+        if os.path.exists(active_path):
+            os.remove(active_path)
+    except Exception:
+        pass
+    return jsonify({'ok': True})
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -1486,15 +1665,16 @@ def get_folder():
 @app.route('/api/open-folder', methods=['POST'])
 @require_license
 def open_folder():
-    import subprocess, platform as _plat
+    import platform as _plat
+    import subprocess
     try:
         system = _plat.system()
         if system == 'Windows':
-            subprocess.Popen(['explorer', DOWNLOAD_DIR])
+            subprocess.Popen(['explorer', get_download_dir()])
         elif system == 'Darwin':
-            subprocess.Popen(['open', DOWNLOAD_DIR])
+            subprocess.Popen(['open', get_download_dir()])
         else:
-            subprocess.Popen(['xdg-open', DOWNLOAD_DIR])
+            subprocess.Popen(['xdg-open', get_download_dir()])
         return jsonify({'ok': True})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1523,7 +1703,7 @@ def serve_downloaded_file(task_id):
     if not filepath or not os.path.exists(filepath):
         fname = task.get('filename', '')
         if fname:
-            cand = os.path.join(DOWNLOAD_DIR, fname)
+            cand = os.path.join(get_download_dir(), fname)
             if os.path.exists(cand):
                 filepath = cand
     if not filepath or not os.path.exists(filepath):
@@ -1540,7 +1720,7 @@ def _try_start_bot():
         import subprocess
         try:
             bot_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), "telegram_bot.py")
-            print(f"🤖 [Server Boot] Launching standalone Telegram Bot process...")
+            print("🤖 [Server Boot] Launching standalone Telegram Bot process...")
             subprocess.Popen([sys.executable, bot_path])
         except Exception as e:
             print(f"⚠️ [Server Boot] Subprocess launch failed ({e}), falling back to thread...")
@@ -1567,7 +1747,7 @@ if __name__ == '__main__':
         local_ip = s.getsockname()[0]
         s.close()
     except Exception:
-        local_ip = 'YOUR_PC_IP'
+        local_ip = '127.0.0.1'
 
     print('\n' + '═' * 50)
     print('  🚀  NexLoad Server v4.5 — Commercial & Cloud Edition')
