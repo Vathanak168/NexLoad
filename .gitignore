@@ -29,3 +29,4 @@ scratch*.txt
 *.db
 patch_*.py
 active_license.json
+Output/
