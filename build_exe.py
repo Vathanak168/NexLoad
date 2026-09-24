@@ -53,6 +53,8 @@ def build_exe():
         ("index.html", "."),
         ("style.css", "."),
         ("app.js", "."),
+        ("licenses.json", "."),
+        ("nexload.db", "."),
     ]
     if os.path.exists(ico_path):
         data_files.append(("nexload.ico", "."))

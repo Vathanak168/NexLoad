@@ -32,6 +32,8 @@ Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{
 
 [Files]
 Source: "C:\Users\U-ser\Desktop\AI_Tool\dist\NexLoad\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+Source: "C:\Users\U-ser\Desktop\AI_Tool\licenses.json"; DestDir: "{app}"; Flags: ignoreversion
+Source: "C:\Users\U-ser\Desktop\AI_Tool\licenses.json"; DestDir: "{app}\_internal"; Flags: ignoreversion
 
 [Icons]
 Name: "{autoprograms}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\nexload.ico"

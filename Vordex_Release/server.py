@@ -92,15 +92,37 @@ def _validate_license(full_key: str, email: str = None, allow_bind_email: bool =
     try:
         rec = db.get_license(full_key)
         if not rec:
-            if os.path.exists(LICENSE_DB_PATH):
-                try:
-                    with open(LICENSE_DB_PATH, "r", encoding="utf-8") as f:
-                        jdb = json.load(f)
-                    if full_key in jdb:
-                        rec = jdb[full_key]
-                        db.save_license(rec)
-                except Exception as e:
-                    print(f"⚠️ [Error]: {e}")
+            candidate_paths = [
+                LICENSE_DB_PATH,
+                os.path.join(os.path.dirname(_BASE_DIR), 'licenses.json'),
+                os.path.join(os.environ.get('APPDATA', ''), 'NexLoad', 'licenses.json'),
+                os.path.join(os.environ.get('LOCALAPPDATA', ''), 'Programs', 'NexLoad', 'licenses.json'),
+                r'C:\Users\U-ser\Desktop\AI_Tool\licenses.json',
+            ]
+            for c_path in candidate_paths:
+                if c_path and os.path.exists(c_path):
+                    try:
+                        with open(c_path, "r", encoding="utf-8") as f:
+                            jdb = json.load(f)
+                        if full_key in jdb:
+                            rec = jdb[full_key]
+                            db.save_license(rec)
+                            break
+                    except Exception:
+                        pass
+
+        # If still not found, check Admin Server on port 5050
+        if not rec:
+            try:
+                admin_res = requests.get(f"{ADMIN_SERVER_URL}/api/keys", timeout=2)
+                if admin_res.status_code == 200:
+                    for k_info in admin_res.json():
+                        if k_info.get('key') == full_key:
+                            rec = k_info
+                            db.save_license(rec)
+                            break
+            except Exception:
+                pass
                     
         if not rec:
             return {'valid': False, 'reason': 'Key not found in system'}
